@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">EveLatro!</string>
+    <string name="title_activity_main">EveLatro!</string>
+    <string name="package_name">com.eve.evelatro.demo</string>
+    <string name="custom_url_scheme">com.eve.evelatro.demo</string>
+</resources>

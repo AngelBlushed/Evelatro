@@ -1,0 +1,8 @@
+{
+  "appId": "com.eve.evelatro.demo",
+  "appName": "EveLatro!",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0e1316"
+  }
+}

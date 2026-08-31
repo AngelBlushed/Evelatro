@@ -1,0 +1,14 @@
+{
+  "name": "EveLatro!",
+  "short_name": "EveLatro!",
+  "description": "Mini casino personnel : blackjack, machines à sous, vidéo poker, roulette.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1316",
+  "theme_color": "#0e1316",
+  "icons": [
+    { "src": "./evelatro.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

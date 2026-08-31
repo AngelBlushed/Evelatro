@@ -1,0 +1,65 @@
+{
+  "name": "evelatro",
+  "version": "1.2.0",
+  "description": "EveLatro! — mini casino personnel",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win zip",
+    "build:portable": "electron-builder --win portable",
+    "build:dev": "node scripts/build-dev.js",
+    "www": "node scripts/sync-www.js",
+    "apk": "node scripts/sync-www.js && npx cap sync android && cd android && gradlew assembleDebug",
+    "site:play": "node scripts/sync-www.js && node scripts/sync-site-play.js",
+    "site:deploy": "npm run site:play && npx wrangler pages deploy site --project-name=evelatro --branch=main --commit-dirty=true",
+    "bot:deploy": "cd bot && railway up",
+    "release": "node scripts/release.js"
+  },
+  "author": "Eve",
+  "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.eve.evelatro",
+    "productName": "EveLatro",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "icon": "build/icon.png",
+    "files": [
+      "main.js",
+      "preload.js",
+      "rpc.js",
+      "index.html",
+      "manifest.json",
+      "evelatro.png",
+      "croupiere.png",
+      "croupiers/**/*",
+      "css/**/*",
+      "js/**/*",
+      "!js/dev.js",
+      "!dev/**/*",
+      "!.dev-build/**/*"
+    ],
+    "win": {
+      "target": [
+        "zip"
+      ],
+      "icon": "build/icon.png",
+      "publisherName": "Eve",
+      "legalTrademarks": "Projet personnel",
+      "artifactName": "EveLatro-${version}-windows.${ext}"
+    },
+    "portable": {
+      "artifactName": "EveLatro.exe"
+    }
+  }
+}

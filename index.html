@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>EveLatro!</title>
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 script-src 'self';
+                 style-src 'self' 'unsafe-inline';
+                 img-src 'self' data: https:;
+                 connect-src 'self' https://ayptnkxkzvntijgzcatx.supabase.co wss://ayptnkxkzvntijgzcatx.supabase.co">
+  <link rel="icon" href="evelatro.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0e1316">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="btn-settings" class="tb-btn" aria-label="R&eacute;glages" title="R&eacute;glages">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.35.22.73.22 1.11a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+        <button id="btn-music" class="tb-btn" aria-label="Musique" title="Musique">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3"/>
+            <circle cx="18" cy="16" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <div class="sign">
+        <span class="sign-chain sign-chain-l"></span>
+        <span class="sign-chain sign-chain-r"></span>
+        <div class="sign-board">
+          <span class="sign-name">EveLatro!</span>
+        </div>
+      </div>
+      <div class="wallet-wrap">
+        <button id="wallet" class="wallet" title="Cliquer pour le bouton d'urgence">
+          <b id="credits">200</b> cr.
+        </button>
+        <button id="rescue" class="rescue-btn" hidden>&#128680; Remettre 200</button>
+      </div>
+    </header>
+    <div id="refill" class="refill" hidden>+200 cr&eacute;dits offerts&nbsp;!</div>
+    <nav id="menu" class="menu"></nav>
+    <main id="stage" class="stage"></main>
+
+    <!-- Panneau "Multi" (ouvert par le bouton en bas à droite) -->
+    <section id="multi-panel" class="multi-panel" hidden>
+      <div class="multi-head">
+        <button id="multi-back" class="multi-close" aria-label="Retour">&#8249;</button>
+        <div class="multi-tabs">
+          <button class="multi-tab is-active" data-view="leaderboard">Classement</button>
+          <button class="multi-tab" data-view="live">En directe</button>
+          <button class="multi-tab" data-view="players">Joueurs</button>
+          <button class="multi-tab" data-view="vs">VS</button>
+        </div>
+        <button id="multi-close" class="multi-close" aria-label="Fermer">&#10005;</button>
+      </div>
+      <div id="multi-body" class="multi-body"></div>
+    </section>
+
+    <footer class="dock">
+      <div id="dock-hint" class="dock-hint" hidden>Bient&ocirc;t&nbsp;!</div>
+      <button class="dock-btn" data-hint="Machines : bient&ocirc;t d'autres jeux" aria-label="Machines">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="6" width="14" height="14" rx="1.5"/>
+          <line x1="6.5" y1="10" x2="6.5" y2="16"/>
+          <line x1="10" y1="10" x2="10" y2="16"/>
+          <line x1="13.5" y1="10" x2="13.5" y2="16"/>
+          <path d="M17 9h2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2"/>
+          <circle cx="19.5" cy="6.5" r="1.5"/>
+        </svg>
+      </button>
+      <button id="dock-cases" class="dock-btn" aria-label="Caisses">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 8l9-4 9 4-9 4-9-4z"/>
+          <path d="M3 8v8l9 4 9-4V8"/>
+          <path d="M12 12v8"/>
+          <path d="M7.5 6.2l9 4"/>
+        </svg>
+      </button>
+      <button id="dock-shop" class="dock-btn" aria-label="Boutique">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8z"/>
+          <path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/>
+        </svg>
+      </button>
+      <button id="dock-chat" class="dock-btn" aria-label="Chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.8-.8L3 21l1.3-4.2A8.4 8.4 0 0 1 3.5 12 8.4 8.4 0 0 1 12 3.5 8.4 8.4 0 0 1 21 11.5z"/>
+        </svg>
+        <span id="chat-badge" class="chat-badge" hidden>0</span>
+      </button>
+      <button id="dock-multi" class="dock-btn" aria-label="Multijoueur">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="2.5"/>
+          <circle cx="16" cy="8" r="2.5"/>
+          <path d="M4 19c0-2.8 1.8-5 4-5s4 2.2 4 5"/>
+          <path d="M12 19c0-2.8 1.8-5 4-5s4 2.2 4 5"/>
+        </svg>
+      </button>
+    </footer>
+  </div>
+
+  <!-- Outils partag&eacute;s -->
+  <script src="js/version.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/music.js"></script>
+  <script src="js/activity.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/cards.js"></script>
+  <script src="js/bank.js"></script>
+  <script src="js/skins.js"></script>
+  <!-- Multijoueur (Supabase + Discord) -->
+  <script src="js/lib/supabase.js"></script>
+  <script src="js/mp-config.js"></script>
+  <script src="js/mp-auth.js"></script>
+  <script src="js/multiplayer.js"></script>
+  <script src="js/anticheat.js"></script>
+  <script src="js/wallet-ledger.js"></script>
+  <script src="js/skin-sync.js"></script>
+  <script src="js/croupier-lines.js"></script>
+  <script src="js/croupier.js"></script>
+  <!-- Les jeux -->
+  <script src="js/blackjack.js"></script>
+  <script src="js/slots.js"></script>
+  <script src="js/poker.js"></script>
+  <script src="js/roulette.js"></script>
+  <script src="js/leaderboard.js"></script>
+  <script src="js/friends.js"></script>
+  <script src="js/duel.js"></script>
+  <script src="js/fight.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/bonus.js"></script>
+  <script src="js/shop.js"></script>
+  <script src="js/cs-catalog.js"></script>
+  <script src="js/cases.js"></script>
+  <script src="js/news.js"></script>
+  <script src="js/fairplay.js"></script>
+  <script src="js/net-guard.js"></script>
+  <script src="js/presence.js"></script>
+  <!-- Chef d'orchestre -->
+  <script src="js/app.js"></script>
+</body>
+</html>

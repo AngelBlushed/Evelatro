@@ -1,0 +1,84 @@
+EveLatro!
+=========
+
+============================================================
+ SUR PC
+============================================================
+
+2 versions au choix :
+
+1) LE DOSSIER  "EveLatro"  (recommande)
+   Copie tout le dossier ou tu veux, puis double-clic sur
+   EveLatro\EveLatro.exe a l'interieur.
+   -> c'est la version qui declenche le MOINS d'alerte antivirus.
+
+2) LE FICHIER UNIQUE  "EveLatro.exe"
+   Plus pratique (un seul fichier) mais Windows SmartScreen
+   rouspete plus souvent.
+
+Dans les deux cas, la 1re fois Windows peut afficher
+"Windows a protege votre ordinateur" :
+   -> clique sur "Informations complementaires"
+   -> puis "Executer quand meme".
+C'est SANS DANGER : l'appli n'est juste pas signee (la signature
+coute de l'argent chaque annee). Rien de malveillant.
+
+
+============================================================
+ SUR ANDROID (telephone / tablette)
+============================================================
+
+Fichier :  EveLatro.apk
+
+1) Copie EveLatro.apk sur ton telephone.
+2) Ouvre-le avec un explorateur de fichiers.
+3) Android demande d'autoriser "installer des applis inconnues"
+   pour cette source -> accepte.
+4) Installe. L'appli s'appelle "EveLatro!".
+
+C'est le meme jeu que sur PC, en entier.
+
+
+============================================================
+ LE JEU
+============================================================
+
+- Blackjack : croupier squelette (voix grave). Boutons DOUBLER
+              et SEPARER quand c'est possible.
+- Machines  : 3 machines (Classique / Neon / Deluxe 3D), un son
+              par machine.
+- Poker     : video poker, croupiere (voix aigue).
+- Roulette  : roue doree animee.
+- Records   : ton classement perso.
+
+EN HAUT A GAUCHE :
+  * bouton engrenage = Reglages (Reprendre / Quitter + 3 volumes :
+    musique, sons du jeu, voix des croupiers)
+  * bouton note = Musique (4 morceaux, selection / blacklist,
+    lecteur play-pause-suivant-repeat-aleatoire + barre de progression)
+
+EN BAS A DROITE, le bouton "multi" ouvre :
+  * Leaderboard multijoueur (connexion Discord)
+  * Actions en directe (heure, pseudo, main/combo, mise, gain)
+  Pour sortir : la croix, la fleche retour, ou n'importe quel
+  bouton du dock.
+
+Credits : depart 200, recharge auto a 0. Clic sur le compteur
+= bouton d'urgence "Remettre 200".
+
+Le multijoueur a besoin de 2 choses cote Supabase (voir
+supabase-setup.sql et le message de Claude).
+
+
+============================================================
+ MODIFIER LE JEU  (pour les curieux)
+============================================================
+
+Le jeu est en HTML/CSS/JavaScript (dossier css/ et js/).
+Test rapide dans le navigateur :  double-clic sur lancer.bat
+
+Refaire la version PC   :  npm run build      (-> dist/)
+Refaire l'APK Android   :  npm run apk        (-> android/app/build/outputs/apk/debug/)
+
+Dossiers "atelier" (supprimables) : node_modules/ dist/ build/
+android/ www/ assets/

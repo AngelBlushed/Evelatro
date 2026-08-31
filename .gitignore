@@ -1,0 +1,30 @@
+node_modules/
+dist/
+build/
+.app-data/
+
+# Version .exe (générée par npm run build)
+/EveLatro/
+/EveLatro.exe
+/EveLatro-Demo.apk
+
+# Version dev (générée par npm run build:dev) — JAMAIS dans le zip
+/dev/
+/.dev-build/
+
+# Android / Capacitor (générés)
+/android/app/build/
+/android/build/
+/android/.gradle/
+/android/local.properties
+/android/app/src/main/assets/public/
+/android/app/src/main/assets/capacitor.config.json
+/www/
+
+# APK générés (vont sur GitHub Releases via npm run release)
+/EveLatro.apk
+/EveLatro*.apk
+/site/EveLatro.apk
+
+# site/play est régénéré par npm run site:play — pas besoin dans le repo
+/site/play/

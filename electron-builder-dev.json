@@ -1,0 +1,23 @@
+{
+  "appId": "com.eve.evelatro.dev",
+  "productName": "EveLatro-DEV",
+  "directories": {
+    "app": ".dev-build/app",
+    "output": "dev",
+    "buildResources": "build"
+  },
+  "icon": "build/icon.png",
+  "files": [
+    "**/*"
+  ],
+  "win": {
+    "target": [
+      "portable"
+    ],
+    "icon": "build/icon.png",
+    "publisherName": "Eve"
+  },
+  "portable": {
+    "artifactName": "EveLatro-DEV.exe"
+  }
+}
