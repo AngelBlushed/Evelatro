@@ -353,3 +353,24 @@ create trigger score_clamp before insert or update on public.scores
 grant execute on function public.wallet_state()          to authenticated;
 grant execute on function public.wallet_commit(jsonb)     to authenticated;
 -- anticheat_scan : appelé par le bot en service_role, pas besoin de grant authenticated
+
+
+-- ---- 10) CADEAUX de skins de caisses (commande /donner-skin du bot) ----
+--    Le bot (service_role) insère ; le jeu lit ses cadeaux non réclamés au
+--    lancement, les ajoute à l'inventaire local, et passe claimed = true.
+create table if not exists public.cs_gifts (
+  id          bigint generated always as identity primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  discord_id  text,
+  skin        jsonb not null,
+  claimed     boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+alter table public.cs_gifts enable row level security;
+drop policy if exists csg_select on public.cs_gifts;
+create policy csg_select on public.cs_gifts
+  for select to authenticated using (auth.uid() = user_id);
+drop policy if exists csg_update on public.cs_gifts;
+create policy csg_update on public.cs_gifts
+  for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+-- insert : service_role (bot) uniquement, pas de policy
