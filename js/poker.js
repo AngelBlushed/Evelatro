@@ -152,6 +152,7 @@ Games.poker = {
         banner.textContent = `${NAME[cat]} ! +${gain} crédits.`;
         banner.className = 'banner banner-win';
         croupier.line('win');
+        try { if (window.Bonus) Bonus.arNote('poker'); } catch (e) {}
       } else {
         banner.textContent = 'Rien cette fois. Perdu.';
         banner.className = 'banner banner-lose';

@@ -164,6 +164,7 @@ Games.roulette = {
         gain: Math.round(gain - stake),
       });
       if (win) wheel.celebrate();
+      try { if (win && stake >= 500 && window.Bonus) Bonus.arNote('roulette'); } catch (e) {}
 
       spinning = false;
       Bank.endRound();

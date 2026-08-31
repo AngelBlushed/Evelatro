@@ -275,6 +275,7 @@ Games.blackjack = {
       banner.textContent = text;
       banner.className = 'banner banner-' + tone;
       croupier.line(tone === 'win' ? 'win' : tone === 'lose' ? 'lose' : 'play');
+      try { if (tone === 'win' && window.Bonus) Bonus.arNote('bj'); } catch (e) {}
 
       const totalStake = hands.reduce((sum, h) => sum + h.stake, 0);
       Activity.log({

@@ -36,8 +36,22 @@ Games.slots = {
     const paytableBox = el('div');
     const betWrap = betBar(() => bet, v => { if (!busy) bet = v; }, { onChange: refreshBtn });
 
-    body.append(subtabs, screen, banner, betWrap, controls, paytableBox);
+    // --- Auto-reroll (bonus boutique) ---
+    let loopOn = true;              // le tour se relance-t-il tout seul ?
+    const arRow = el('div', { class: 'ar-row' });
+    const arBtn = el('button', { class: 'ar-btn', type: 'button' });
+    const arTimer = el('span', { class: 'ar-timer' });
+    const arTip = el('div', { class: 'ar-tip', hidden: true });
+    arRow.append(arBtn, arTimer, arTip);
+    arBtn.addEventListener('click', onArClick);
+    arBtn.addEventListener('mouseenter', () => { if (Bonus.arState() === 'locked') arTip.hidden = false; });
+    arBtn.addEventListener('mouseleave', () => { arTip.hidden = true; });
+
+    body.append(subtabs, screen, banner, betWrap, controls, arRow, paytableBox);
+    const offBonus = Bonus.onChange(renderAR);
+    const arTick = setInterval(renderAR, 1000);
     switchTo(0);
+    renderAR();
 
     // mode combat "EveFight!" : la machine est imposée, on cache les onglets
     try {
@@ -50,9 +64,73 @@ Games.slots = {
 
     function leave() {
       alive = false;
+      clearInterval(arTick);
+      if (offBonus) offBonus();
       if (busy) { Bank.payout(stake); busy = false; }   // tour en cours : on rend la mise
     }
     Games.slots.leave = leave;
+
+    const fmtCr = n => Number(n || 0).toLocaleString('fr-FR');
+    function fmtLeft(ms) {
+      const s = Math.max(0, Math.round(ms / 1000));
+      return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    }
+
+    function renderAR() {
+      if (!alive) return;
+      const state = Bonus.arState();
+      if (state === 'not-owned') { arRow.hidden = true; return; }
+      arRow.hidden = false;
+      arBtn.className = 'ar-btn';
+      arTimer.hidden = true;
+
+      if (state === 'active') {
+        arBtn.classList.add('is-on');
+        arBtn.disabled = false;
+        arBtn.textContent = loopOn ? '🔁 Auto-reroll : ON' : '⏸ Auto-reroll : pause';
+        arTimer.hidden = false;
+        arTimer.textContent = fmtLeft(Bonus.arMsLeft());
+        if (loopOn && !busy && alive) maybeAutoSpin();
+      } else if (state === 'ready') {
+        arBtn.classList.add('is-ready');
+        arBtn.disabled = false;
+        arBtn.textContent = '🔁 Réarmer l\'auto-reroll';
+      } else { // locked
+        arBtn.classList.add('is-locked');
+        arBtn.disabled = true;
+        arBtn.textContent = '🔁 Auto-reroll (verrouillé)';
+        const p = Bonus.arProgress();
+        arTip.textContent =
+          `Pour réarmer : blackjacks gagnés ${p.bj}/${p.need} · pokers ${p.poker}/${p.need} · `
+          + `roulettes gagnées ≥ 500 ${p.roulette}/${p.need}. Puis payer ${fmtCr(Bonus.arRearmPrice())} cr.`;
+      }
+    }
+
+    function onArClick() {
+      const state = Bonus.arState();
+      if (state === 'active') { loopOn = !loopOn; renderAR(); if (loopOn) maybeAutoSpin(); return; }
+      if (state !== 'ready') return;
+      openModal({
+        title: 'Auto-reroll',
+        build(box, close) {
+          box.append(el('p', { class: 'ar-modal-p', text:
+            `Réarmer l'auto-reroll pour ${fmtCr(Bonus.arRearmPrice())} cr ?` }));
+          box.append(el('div', { class: 'ar-modal-actions' },
+            el('button', { class: 'btn btn-primary', text: 'Confirmer', onClick: () => {
+              const r = Bonus.arRearm();
+              close();
+              if (!r.ok && r.reason === 'poor') banner.textContent = 'Pas assez de crédits.';
+            } }),
+            el('button', { class: 'btn btn-mini', text: 'Annuler', onClick: close }),
+          ));
+        },
+      });
+    }
+
+    function maybeAutoSpin() {
+      if (!alive || busy || !loopOn || !Bonus.arActive()) return;
+      setTimeout(() => { if (alive && !busy && loopOn && Bonus.arActive()) spin(); }, 1000);
+    }
 
     function switchTo(i) {
       if (busy) return;
@@ -105,14 +183,13 @@ Games.slots = {
         gain: Math.round(gain - stake),
       });
       busy = false;
-      const refilled = Bank.endRound();
+      Bank.endRound();
       betWrap.syncAuto();
       refreshBtn();
 
-      // Bonus "auto-reset" : la machine se recharge et relance un tour toute seule.
-      if (refilled && window.Bonus && Bonus.has('slots-autoreset') && alive) {
-        setTimeout(() => { if (alive && !busy) spin(); }, 1100);
-      }
+      // Bonus "auto-reroll" : la machine relance toute seule avec la mise.
+      if (alive && window.Bonus && Bonus.arActive() && loopOn) maybeAutoSpin();
+      renderAR();
     }
   },
 };
