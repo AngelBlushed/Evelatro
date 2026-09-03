@@ -84,6 +84,10 @@ const NetGuard = (() => {
 
   function evaluate() {
     if (dev()) { hide(); return; }
+    // le menu d'accueil / le hub restent accessibles hors-ligne ;
+    //        l'écran de garde ne s'affiche que dans le casino.
+    const sh = document.documentElement.dataset.shell;
+    if (window.__EVELATRO_SHELL__ && sh && sh !== 'casino') { hide(); return; }
     if (!online) { showOffline(); return; }
     if (!ready()) { if (bootDone) showServerDown(); return; }
     try {

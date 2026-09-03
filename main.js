@@ -8,14 +8,22 @@ const { app, BrowserWindow, ipcMain, screen, shell } = require('electron');
 const path = require('path');
 const rpc = require('./rpc');
 
-function createWindow() {
-  // s'adapte à l'écran : haut comme on peut, sans dépasser la zone utile
-  const workArea = screen.getPrimaryDisplay().workAreaSize;
+/* La fenêtre est toujours en plein écran. La touche F (gérée dans le jeu)
+   fait défiler 3 modes :
+     'framed'     : fenêtre maximisée, barre de titre + barre des tâches
+     'frameless'  : maximisée sans barre de titre (barre des tâches visible)
+     'fullscreen' : plein écran total (rien autour)
+   Changer la présence du cadre impose de recréer la fenêtre (Windows) ;
+   le jeu retient l'écran courant (sessionStorage) et y revient. */
+let mainWin = null;
+let windowMode = 'framed';
+
+function buildWindow(mode, resumeScreen) {
+  const frameless = (mode === 'frameless' || mode === 'fullscreen');
   const win = new BrowserWindow({
-    width: Math.min(480, workArea.width),
-    height: Math.min(1100, workArea.height - 30),
-    minWidth: 380,
-    minHeight: 560,
+    show: false,
+    frame: !frameless,
+    fullscreen: mode === 'fullscreen',
     backgroundColor: '#0e1316',
     autoHideMenuBar: true,
     title: 'EveLatro!',
@@ -28,8 +36,43 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, 'index.html'));
+  win.once('ready-to-show', () => {
+    if (mode === 'framed') win.maximize();
+    else if (mode === 'frameless') win.setBounds(screen.getPrimaryDisplay().workArea);
+    win.show();
+  });
+  win.on('closed', () => { if (mainWin === win) mainWin = null; });
+  win.loadFile(path.join(__dirname, 'index.html'),
+    resumeScreen ? { query: { resume: resumeScreen } } : undefined);
+  return win;
 }
+
+function createWindow() {
+  windowMode = 'framed';
+  mainWin = buildWindow(windowMode);
+}
+
+function setWindowMode(mode, resumeScreen) {
+  if (!mainWin || mode === windowMode) return windowMode;
+  const rebuild = ((windowMode === 'framed') !== (mode === 'framed'));
+  windowMode = mode;
+  if (rebuild) {
+    const old = mainWin;
+    mainWin = buildWindow(mode, resumeScreen);
+    mainWin.once('show', () => { try { old.destroy(); } catch (e) { /* rien */ } });
+  } else {
+    // frameless <-> fullscreen : pas besoin de recréer
+    mainWin.setFullScreen(mode === 'fullscreen');
+    if (mode === 'frameless') mainWin.setBounds(screen.getPrimaryDisplay().workArea);
+  }
+  return windowMode;
+}
+
+ipcMain.on('cycle-window-chrome', (event, currentScreen) => {
+  const order = ['framed', 'frameless', 'fullscreen'];
+  const next = order[(order.indexOf(windowMode) + 1) % order.length];
+  event.returnValue = setWindowMode(next, currentScreen || 'launch');
+});
 
 /* --- Connexion Discord --- */
 ipcMain.handle('oauth-discord', (event, { authUrl, redirectPrefix }) => {

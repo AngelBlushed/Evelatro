@@ -49,6 +49,7 @@ const step = (n) => console.log('\n========== ' + n + ' ==========');
 const DIST = path.join(ROOT, 'dist');
 const EXE = path.join(DIST, 'EveLatro.exe');
 const ZIP = path.join(DIST, `EveLatro-${VERSION}-windows.zip`);
+const ZIP_PUB = path.join(DIST, 'EveLatro-Windows.zip');   // nom stable pour la release / le site
 const APK_SRC = path.join(ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
 const APK = path.join(DIST, 'EveLatro.apk');
 
@@ -78,6 +79,9 @@ if (doStep('build')) {
     console.warn('\n⚠ APK non construit (' + e.message + '). Le reste continue sans l\'APK.');
   }
 
+  // zip Windows sous un nom stable (pour la release GitHub et le bouton du site)
+  if (fs.existsSync(ZIP)) cp(ZIP, ZIP_PUB);
+
   // copies pratiques à la racine + dans site/
   cp(EXE, path.join(ROOT, 'EveLatro.exe'));
   if (fs.existsSync(APK)) { cp(APK, path.join(ROOT, 'EveLatro.apk')); cp(APK, path.join(ROOT, 'site', 'EveLatro.apk')); }
@@ -99,13 +103,18 @@ if (doStep('github') && urlWin === 'EveLatro.exe') {
     console.warn('⚠ Pas de dépôt GitHub (git remote origin). Étape GitHub ignorée — le site pointera sur des fichiers locaux (KO pour le .exe sur Cloudflare).');
   } else {
     ensure('gh --version', 'GitHub CLI (gh) absent. Installe-le : https://cli.github.com puis  gh auth login');
-    const assets = [EXE, fs.existsSync(APK) ? APK : null].filter(Boolean).map(q).join(' ');
+    // le site télécharge le .ZIP (dossier complet) ; on met aussi le .exe portable en secours
+    if (fs.existsSync(ZIP) && !fs.existsSync(ZIP_PUB)) cp(ZIP, ZIP_PUB);   // au cas où --skip=build
+    const assets = [ZIP_PUB, EXE, fs.existsSync(APK) ? APK : null]
+      .filter(p => p && fs.existsSync(p)).map(q).join(' ');
     // supprime une release existante du même tag puis recrée (idempotent)
     try { sh(`gh release delete ${TAG} --yes --cleanup-tag`); } catch (e) {}
     sh(`gh release create ${TAG} ${assets} --title ${q('EveLatro! ' + VERSION)} --notes ${q(NOTES)}`);
-    urlWin = `https://github.com/${slug}/releases/download/${TAG}/EveLatro.exe`;
+    urlWin = fs.existsSync(ZIP_PUB)
+      ? `https://github.com/${slug}/releases/download/${TAG}/EveLatro-Windows.zip`
+      : `https://github.com/${slug}/releases/download/${TAG}/EveLatro.exe`;
     if (fs.existsSync(APK)) urlApk = `https://github.com/${slug}/releases/download/${TAG}/EveLatro.apk`;
-    console.log('\n.exe  -> ' + urlWin);
+    console.log('\nWindows (.zip) -> ' + urlWin);
     console.log('.apk  -> ' + urlApk);
   }
 }
@@ -126,7 +135,9 @@ if (doStep('site')) {
   step('DÉPLOIEMENT SITE (Cloudflare Pages)');
   sh('node scripts/sync-www.js');
   sh('node scripts/sync-site-play.js');
-  sh('npx wrangler pages deploy site --project-name=evelatro --branch=main --commit-dirty=true');
+  // NB : la branche de PRODUCTION du projet Cloudflare Pages s'appelle "Evelatro"
+  // (créée au 1er déploiement). Ne pas changer, sinon evelatro.pages.dev ne bouge plus.
+  sh('npx wrangler pages deploy site --project-name=evelatro --branch=Evelatro --commit-dirty=true');
   console.log('\n-> https://evelatro.pages.dev');
 }
 

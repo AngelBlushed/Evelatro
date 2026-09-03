@@ -32,7 +32,10 @@ const Cards = (() => {
   /** Construit la petite carte affichée à l'écran. */
   function cardEl(card, faceDown) {
     if (faceDown) return el('div', { class: 'card card-back' });
-    return el('div', { class: 'card' + (RED.has(card.suit) ? ' card-red' : '') },
+    return el('div', {
+      class: 'card' + (RED.has(card.suit) ? ' card-red' : ''),
+      'data-suit': card.suit,          // grand symbole filigrane (CSS ::after)
+    },
       el('span', { class: 'card-rank', text: card.rank }),
       el('span', { class: 'card-suit', text: card.suit }),
     );

@@ -10,4 +10,8 @@ contextBridge.exposeInMainWorld('electronAuth', {
   quit: () => ipcRenderer.send('quit-app'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
   presence: (data) => ipcRenderer.send('presence', data),
+  // touche F : fait défiler cadre normal -> sans barre de titre -> plein écran total.
+  // on passe l'écran courant pour y revenir si la fenêtre doit être recréée.
+  // renvoie le nouveau mode ('framed' | 'frameless' | 'fullscreen').
+  cycleChrome: (currentScreen) => ipcRenderer.sendSync('cycle-window-chrome', currentScreen),
 });

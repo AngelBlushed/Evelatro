@@ -14,6 +14,10 @@ alter table public.wallet add column if not exists flagged      boolean     not 
 alter table public.wallet add column if not exists flag_reason  text;
 alter table public.wallet add column if not exists flagged_at   timestamptz;
 alter table public.wallet add column if not exists last_commit  timestamptz;
+-- sauvegarde serveur de l'inventaire de caisses + des bonus boutique (pour la
+-- restauration en cas de faux positif ; le client les pousse via game_sync()).
+alter table public.wallet add column if not exists cs_inv       jsonb;
+alter table public.wallet add column if not exists bonuses      jsonb       not null default '{}'::jsonb;
 
 drop policy if exists wallet_insert on public.wallet;   -- plus d'insert client
 drop policy if exists wallet_update on public.wallet;   -- plus d'update client
@@ -82,18 +86,30 @@ $$;
 -- ---- 5) helper interne : lève un flag + snapshot + (option) reset ----
 --   Renvoie TRUE si un reset auto a bien été fait, FALSE si c'était un simple
 --   signalement (soit demandé, soit parce que l'interrupteur global est coupé).
-create or replace function public._wl_flag(p_uid uuid, p_reason text, p_details jsonb, p_auto boolean)
+--
+--   p_restore_bal : solde À RESTAURER si c'est un faux positif = le solde
+--   PROPRE, AVANT l'action douteuse (un bug qui "drop" 1 M ne doit jamais
+--   être mémorisé ; on garde ce que le joueur avait juste avant). Si null,
+--   on retombe sur le solde courant.
+drop function if exists public._wl_flag(uuid, text, jsonb, boolean);
+create or replace function public._wl_flag(p_uid uuid, p_reason text, p_details jsonb, p_auto boolean, p_restore_bal bigint default null)
 returns boolean language plpgsql security definer set search_path = public as $$
 declare
   v_snap jsonb;
   v_prof record;
+  v_cur  bigint;
 begin
   -- interrupteur global : si l'auto-reset est coupé, on ne fait que signaler
   if p_auto and not public._ac_auto_on() then p_auto := false; end if;
   select p.discord_id, p.pseudo into v_prof from public.profiles p where p.user_id = p_uid;
+  select credits into v_cur from public.wallet where user_id = p_uid;
+
   select jsonb_build_object(
-    'credits', (select credits from public.wallet where user_id = p_uid),
-    'skins',   (select to_jsonb(s) from public.user_skins s where s.user_id = p_uid),
+    'credits',        v_cur,
+    'credits_before', coalesce(p_restore_bal, v_cur),   -- <-- solde à restaurer
+    'skins',   (select jsonb_agg(to_jsonb(s)) from public.user_skins s where s.user_id = p_uid),
+    'cs_inv',  (select cs_inv  from public.wallet where user_id = p_uid),
+    'bonuses', (select bonuses from public.wallet where user_id = p_uid),
     'score',   (select best_score from public.scores where user_id = p_uid),
     'at',      now()
   ) into v_snap;
@@ -103,7 +119,8 @@ begin
 
   if p_auto then
     update public.wallet
-       set flagged = true, flag_reason = p_reason, flagged_at = now(), credits = 0
+       set flagged = true, flag_reason = p_reason, flagged_at = now(),
+           credits = 0, cs_inv = null, bonuses = '{}'::jsonb
      where user_id = p_uid;
     delete from public.user_skins where user_id = p_uid;
     delete from public.scores     where user_id = p_uid;
@@ -116,8 +133,9 @@ end $$;
 
 
 -- ---- 6) wallet_state()  : lecture + création + recharge à 200 ----
+drop function if exists public.wallet_state();
 create or replace function public.wallet_state()
-returns table (credits bigint, flagged boolean, flag_reason text)
+returns table (credits bigint, flagged boolean, flag_reason text, cs_inv jsonb, bonuses jsonb)
 language plpgsql security definer set search_path = public as $$
 declare
   uid uuid := auth.uid();
@@ -133,7 +151,7 @@ begin
     if not exists (select 1 from public.wallet_ledger where user_id = uid) then
       perform public._wl_add(uid, 200, 'start', null, 200);
     end if;
-    return query select w.credits, false, null::text;
+    return query select w.credits, false, null::text, w.cs_inv, w.bonuses;
     return;
   end if;
 
@@ -146,7 +164,7 @@ begin
   -- puis on baisse le flag (la fiche reste dans cheat_flags).
   if w.flagged then
     update public.wallet set flagged = false where user_id = uid;
-    return query select 0::bigint, true, w.flag_reason;
+    return query select 0::bigint, true, w.flag_reason, null::jsonb, '{}'::jsonb;
     return;
   end if;
 
@@ -156,7 +174,7 @@ begin
     perform public._wl_add(uid, 200, 'refill', null, 200);
   end if;
 
-  return query select w.credits, false, w.flag_reason;
+  return query select w.credits, false, w.flag_reason, w.cs_inv, w.bonuses;
 end $$;
 
 
@@ -178,9 +196,13 @@ declare
   last_bet bigint := 0;
   net_gain bigint := 0;
   rejected int[] := '{}';
+  duel_cap bigint := 0;
+  dcnt     int := 0;
   HARD_MULT   constant int := 340;      -- au-delà = IMPOSSIBLE (poker royal = 250x)
   REVIEW_MULT constant int := 60;       -- au-delà (et > 40k) = à examiner, mais pas de reset
   MAX_BATCH_GAIN constant bigint := 80000000;  -- garde-fou lot (très large)
+  DUEL_MULT   constant int := 20;       -- gain de duel max ~ 20x le solde du gagnant
+  DUEL_FLOOR  constant bigint := 5000000;  -- ... ou 5 M plancher
 begin
   if uid is null then raise exception 'not authenticated'; end if;
   if jsonb_typeof(p_entries) <> 'array' then raise exception 'entries must be an array'; end if;
@@ -212,7 +234,7 @@ begin
 
     -- mouvements réservés au serveur : tricherie évidente si le client les envoie
     if r in ('start','refill','adjust') or r like 'flag:%' then
-      if public._wl_flag(uid, 'reason_interdit:' || r, jsonb_build_object('entry', e), true) then
+      if public._wl_flag(uid, 'reason_interdit:' || r, jsonb_build_object('entry', e), true, bal) then
         select * into w from public.wallet where user_id = uid;
         return jsonb_build_object('credits', 0, 'flagged', true, 'flag_reason', w.flag_reason, 'rejected', to_jsonb(rejected));
       end if;
@@ -230,7 +252,7 @@ begin
       if d < 0 or last_bet = 0 then rejected := rejected || i; i := i + 1; continue; end if;
       -- IMPOSSIBLE : au-delà de 340x la mise -> reset auto (ou signalement si interrupteur coupé)
       if d > last_bet * HARD_MULT then
-        if public._wl_flag(uid, 'gain_impossible', jsonb_build_object('delta', d, 'last_bet', last_bet), true) then
+        if public._wl_flag(uid, 'gain_impossible', jsonb_build_object('delta', d, 'last_bet', last_bet), true, bal) then
           select * into w from public.wallet where user_id = uid;
           return jsonb_build_object('credits', 0, 'flagged', true, 'flag_reason', w.flag_reason, 'rejected', to_jsonb(rejected));
         end if;
@@ -245,7 +267,7 @@ begin
              and created_at > now() - interval '2 days';
           if v_cnt >= 3 then
             v_reset := public._wl_flag(uid, 'gros_gains_repetes',
-              jsonb_build_object('delta', d, 'last_bet', last_bet, 'occurences', v_cnt + 1), true);
+              jsonb_build_object('delta', d, 'last_bet', last_bet, 'occurences', v_cnt + 1), true, bal);
             if v_reset then
               select * into w from public.wallet where user_id = uid;
               return jsonb_build_object('credits', 0, 'flagged', true, 'flag_reason', w.flag_reason, 'rejected', to_jsonb(rejected));
@@ -274,6 +296,41 @@ begin
       if d < 0 or d > 3000000 then rejected := rejected || i; i := i + 1; continue; end if;
       bal := bal + d;
 
+    elsif r = 'duel' then
+      -- Duel VS (joueur contre joueur) : la "mise" est un % du solde réel,
+      -- pas liée à un jeu -> le ratio HARD_MULT ne s'applique PAS. On garde
+      -- juste un plafond de sécurité (au cas où un bug renverrait un montant fou).
+      if d < 0 then
+        if abs(d) > bal then d := -bal; end if;
+        bal := bal + d;
+      elsif d = 0 then
+        rejected := rejected || i; i := i + 1; continue;
+      else
+        duel_cap := greatest(bal * DUEL_MULT, DUEL_FLOOR);
+        if d > duel_cap then
+          -- gain de duel démesuré : on applique le plafond et on SIGNALE
+          -- (sans reset). Si ça se répète (3 / 2 j) -> reset, en restaurant
+          -- le solde d'AVANT le duel.
+          select count(*) into dcnt from public.cheat_flags
+           where user_id = uid and reason = 'duel_gain_eleve'
+             and created_at > now() - interval '2 days';
+          if dcnt >= 3 then
+            if public._wl_flag(uid, 'duel_gains_repetes',
+                 jsonb_build_object('delta', d, 'cap', duel_cap, 'occurences', dcnt + 1), true, bal) then
+              select * into w from public.wallet where user_id = uid;
+              return jsonb_build_object('credits', 0, 'flagged', true, 'flag_reason', w.flag_reason, 'rejected', to_jsonb(rejected));
+            end if;
+          elsif not exists (select 1 from public.cheat_flags
+                            where user_id = uid and reason = 'duel_gain_eleve'
+                              and created_at > now() - interval '25 minutes') then
+            perform public._wl_flag(uid, 'duel_gain_eleve',
+              jsonb_build_object('delta', d, 'cap', duel_cap), false, bal);
+          end if;
+          d := duel_cap;
+        end if;
+        bal := bal + d;
+      end if;
+
     else
       rejected := rejected || i; i := i + 1; continue;
     end if;
@@ -284,7 +341,7 @@ begin
   end loop;
 
   if net_gain > MAX_BATCH_GAIN then
-    if public._wl_flag(uid, 'gain_lot_impossible', jsonb_build_object('net_gain', net_gain), true) then
+    if public._wl_flag(uid, 'gain_lot_impossible', jsonb_build_object('net_gain', net_gain), true, w.credits) then
       select * into w from public.wallet where user_id = uid;
       return jsonb_build_object('credits', 0, 'flagged', true, 'flag_reason', w.flag_reason, 'rejected', to_jsonb(rejected));
     end if;
@@ -353,6 +410,24 @@ create trigger score_clamp before insert or update on public.scores
 grant execute on function public.wallet_state()          to authenticated;
 grant execute on function public.wallet_commit(jsonb)     to authenticated;
 -- anticheat_scan : appelé par le bot en service_role, pas besoin de grant authenticated
+
+
+-- ---- 7bis) game_sync()  : sauvegarde serveur inventaire caisses + bonus ----
+--   Sert UNIQUEMENT de filet pour restaurer un faux positif. Ces données ne
+--   comptent pas pour le classement ; on ne les valide donc pas ici (la vente
+--   de skins passe, elle, par wallet_commit qui plafonne). Un compte flaggé
+--   ne peut rien réécrire.
+create or replace function public.game_sync(p_cs_inv jsonb, p_bonuses jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid();
+begin
+  if uid is null then raise exception 'not authenticated'; end if;
+  update public.wallet
+     set cs_inv  = coalesce(p_cs_inv,  cs_inv),
+         bonuses = coalesce(p_bonuses, bonuses)
+   where user_id = uid and not flagged;
+end $$;
+grant execute on function public.game_sync(jsonb, jsonb) to authenticated;
 
 
 -- ---- 10) CADEAUX de skins de caisses (commande /donner-skin du bot) ----

@@ -27,16 +27,19 @@ const OUT = path.join(ROOT, 'dev');
 
 // Fichiers du jeu à embarquer (mêmes que build.files de package.json).
 const RUNTIME = [
-  'main.js', 'preload.js', 'index.html', 'manifest.json',
-  'evelatro.png', 'croupiere.png',
-  'croupiers', 'css', 'js',
+  'main.js', 'preload.js', 'rpc.js', 'index.html', 'manifest.json',
+  'evelatro.png', 'croupiere.png', 'fondcaisse.png', 'fondinventory.png',
+  'croupiers', 'cs', 'css', 'js',
 ];
 
-function rmrf(p) { fs.rmSync(p, { recursive: true, force: true }); }
+function rmrf(p) { try { fs.rmSync(p, { recursive: true, force: true }); } catch (e) { /* ex: l'exe DEV est ouvert */ } }
 
 console.log('· nettoyage');
 rmrf(STAGE);
 rmrf(OUT);
+if (fs.existsSync(OUT) && fs.existsSync(path.join(OUT, 'EveLatro-DEV.exe'))) {
+  console.warn('⚠  dev/EveLatro-DEV.exe est peut-être ouvert — ferme-le si le build échoue.');
+}
 fs.mkdirSync(APP, { recursive: true });
 
 console.log('· copie des sources du jeu');

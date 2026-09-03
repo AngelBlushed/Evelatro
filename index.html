@@ -14,11 +14,180 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0e1316">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/shell.css">
+  <link rel="stylesheet" href="css/casino.css">
 </head>
 <body>
-  <div id="app">
+
+  <!-- ============ MENU 1 : accueil ============ -->
+  <div id="launch-screen" class="screen shell-screen">
+    <canvas id="launch-canvas" class="liquid-canvas" aria-hidden="true"></canvas>
+    <svg class="bg-lines" viewBox="0 0 1000 500" preserveAspectRatio="none" aria-hidden="true"></svg>
+
+    <div class="float-cards" aria-hidden="true">
+      <span class="fchip fch-1"><i>25</i></span>
+      <span class="fchip fch-2"><i>100</i></span>
+      <span class="fchip fch-3"><i>5</i></span>
+      <span class="fchip fch-4"><i>1k</i></span>
+      <span class="fchip fch-5"><i>10</i></span>
+      <span class="fchip fch-6"><i>500</i></span>
+      <span class="fchip fch-7"><i>50</i></span>
+      <span class="fchip fch-8"><i>5k</i></span>
+      <span class="fchip fch-9"><i>1</i></span>
+      <span class="fchip fch-10"><i>250</i></span>
+      <span class="fchip fch-11"><i>2k</i></span>
+      <span class="fchip fch-12"><i>75</i></span>
+      <div class="fan">
+        <span class="fan-c" data-world="casino">
+          <span class="fan-card"><em>10</em><b>&spades;</b></span>
+          <span class="fan-tip" role="tooltip">
+            <b class="ft-title">&#127920; Casino</b>
+            <span class="ft-line">Blackjack, machines &agrave; sous, poker, roulette.</span>
+            <span class="ft-line">Mise, gagne, perds, recommence&nbsp;&mdash; VS entre potes et caisses &agrave; skins.</span>
+            <span class="ft-tag">Jouable</span>
+          </span>
+        </span>
+        <span class="fan-c red" data-world="soleil">
+          <span class="fan-card"><em>J</em><b>&hearts;</b></span>
+          <span class="fan-tip" role="tooltip">
+            <b class="ft-title">&#127774; Soleil</b>
+            <span class="ft-line">Un <i>plateau</i> revisit&eacute;&nbsp;: un vrai jeu de plateau, cases, d&eacute;s et surprises.</span>
+            <span class="ft-line">On avance &agrave; son rythme, loin du tapis vert.</span>
+            <span class="ft-tag ft-soon">&Agrave; venir</span>
+          </span>
+        </span>
+        <span class="fan-c" data-world="mystere">
+          <span class="fan-card"><em>Q</em><b>&clubs;</b></span>
+          <span class="fan-tip" role="tooltip">
+            <b class="ft-title">&#10068;&#65039; ? ? ?</b>
+            <span class="ft-line">Un monde encore tenu secret.</span>
+            <span class="ft-line">Reviens voir&nbsp;: la Dame ne parle pas encore.</span>
+            <span class="ft-tag ft-soon">&Agrave; venir</span>
+          </span>
+        </span>
+        <span class="fan-c red" data-world="garden">
+          <span class="fan-card"><em>K</em><b>&diams;</b></span>
+          <span class="fan-tip" role="tooltip">
+            <b class="ft-title">&#127807; Garden</b>
+            <span class="ft-line">Farme ton argent, tranquille.</span>
+            <span class="ft-line">Fais pousser tes cr&eacute;dits sans le stress de tout perdre au casino.</span>
+            <span class="ft-tag ft-soon">&Agrave; venir</span>
+          </span>
+        </span>
+        <span class="fan-c" data-world="tcg">
+          <span class="fan-card"><em>A</em><b>&spades;</b></span>
+          <span class="fan-tip" role="tooltip">
+            <b class="ft-title">&#127183; Cartes &agrave; collectionner</b>
+            <span class="ft-line">Ouvre, &eacute;change, compl&egrave;te ta collection.</span>
+            <span class="ft-line">Franchement&nbsp;: &agrave; essayer absolument.</span>
+            <span class="ft-tag ft-soon">&Agrave; venir</span>
+          </span>
+        </span>
+      </div>
+    </div>
+
+    <div class="title-wrap">
+      <h1 class="chunk-title" aria-label="EveLatro!">
+        <span class="ct-word"><span>E</span><span>v</span><span>e</span></span><span class="ct-card" aria-hidden="true"><span class="ctc-corner"><i>A</i><s>&spades;</s></span><b class="ctc-pip">&spades;</b></span><span class="ct-word"><span>L</span><span>a</span><span>t</span><span>r</span><span>o</span></span><span class="ct-bang">!</span>
+      </h1>
+      <p class="chunk-sub">dopamine dealer</p>
+    </div>
+
+    <div class="launch-bar">
+      <button class="chunk-btn cb-play" data-act="play">Jouer</button>
+      <button class="chunk-btn cb-opt" data-act="options">Options</button>
+      <button class="chunk-btn cb-quit" data-act="quit" hidden>Quitter</button>
+    </div>
+
+    <button class="chunk-btn cb-patch corner-patch" data-act="patch">Patch&nbsp;notes</button>
+    <span class="corner-ver" id="build-tag">v1.3</span>
+
+    <div class="corner-social">
+      <button class="soc-btn" data-soc="discord" aria-label="Discord" title="Discord">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.3 5.3A16.5 16.5 0 0 0 15.2 4l-.2.4a12 12 0 0 1 3.6 1.8 12.8 12.8 0 0 0-11.1 0A12 12 0 0 1 11 4.4L10.8 4a16.5 16.5 0 0 0-4.1 1.3C3.9 9.4 3.2 13.4 3.5 17.4A16.6 16.6 0 0 0 8.6 20l.6-.9a10.7 10.7 0 0 1-1.7-.8l.4-.3a11.5 11.5 0 0 0 9.8 0l.4.3c-.5.3-1.1.6-1.7.8l.6.9a16.6 16.6 0 0 0 5.1-2.6c.4-4.6-.6-8.6-2.4-12.1zM9.2 15c-.8 0-1.5-.8-1.5-1.7S8.4 11.6 9.2 11.6s1.5.8 1.5 1.7S10 15 9.2 15zm5.6 0c-.8 0-1.5-.8-1.5-1.7s.7-1.7 1.5-1.7 1.5.8 1.5 1.7-.7 1.7-1.5 1.7z"/></svg>
+      </button>
+      <button class="soc-btn" data-soc="google" aria-label="Google" title="Google">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1a6.2 6.2 0 0 1 0-12.4c1.9 0 3.2.8 3.9 1.5l2.7-2.6C17.1 2.6 14.8 1.6 12 1.6a10.4 10.4 0 1 0 0 20.8c6 0 10-4.2 10-10.1 0-.7-.08-1.2-.18-1.7H12z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ MENU 2 : hub (mondes) ============ -->
+  <div id="hub-screen" class="screen shell-screen" hidden>
+    <div class="hub-bg" aria-hidden="true"><span class="hub-glow"></span></div>
+
+    <div class="hub-top-left">
+      <button id="hub-home" class="hub-round" aria-label="Menu d'accueil" title="Menu d'accueil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>
+        </svg>
+      </button>
+      <button id="hub-settings" class="hub-round" aria-label="Réglages" title="Réglages">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.35.22.73.22 1.11a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+      <button id="hub-music" class="hub-round" aria-label="Musique" title="Musique">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+        </svg>
+      </button>
+    </div>
+
+    <button id="hub-ach" class="hub-ach" aria-label="Succès" title="Succès">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/>
+        <path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>
+      </svg>
+      <span>Succès</span>
+      <b id="hub-ach-count">0/2</b>
+    </button>
+
+    <div class="hub-head">
+      <span class="hub-kicker">Choisis un monde</span>
+    </div>
+
+    <div class="hub-grid">
+      <button class="world" data-world="casino">
+        <span class="world-ic">🎰</span>
+        <span class="world-name">Casino</span>
+        <span class="world-tag">Blackjack · machines · poker · roulette · VS · caisses</span>
+      </button>
+      <button class="world is-soon" data-world="soleil">
+        <span class="world-ic">🌞</span>
+        <span class="world-name">Soleil</span>
+        <span class="world-tag">à venir</span>
+      </button>
+      <button class="world is-soon" data-world="garden">
+        <span class="world-ic">🌿</span>
+        <span class="world-name">Garden</span>
+        <span class="world-tag">à venir</span>
+      </button>
+      <button class="world is-soon" data-world="cards">
+        <span class="world-ic">🃏</span>
+        <span class="world-name">Cartes à collectionner</span>
+        <span class="world-tag">à venir</span>
+      </button>
+    </div>
+
+    <button id="hub-chat" class="hub-chat" aria-label="Chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.8-.8L3 21l1.3-4.2A8.4 8.4 0 0 1 3.5 12 8.4 8.4 0 0 1 12 3.5 8.4 8.4 0 0 1 21 11.5z"/>
+      </svg>
+      <span>Chat</span>
+      <span id="hub-chat-badge" class="hub-chat-badge" hidden>0</span>
+    </button>
+  </div>
+
+  <div id="app" hidden>
     <header class="topbar">
       <div class="topbar-left">
+        <button id="btn-hub" class="tb-btn" aria-label="Retour au menu" title="Retour au menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>
+          </svg>
+        </button>
         <button id="btn-settings" class="tb-btn" aria-label="R&eacute;glages" title="R&eacute;glages">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -48,7 +217,27 @@
       </div>
     </header>
     <div id="refill" class="refill" hidden>+200 cr&eacute;dits offerts&nbsp;!</div>
-    <nav id="menu" class="menu"></nav>
+    <div class="nav-bar">
+      <nav id="menu" class="menu"></nav>
+      <button id="dock-cases" class="menu-item nav-cases" aria-label="Caisses" title="Caisses">
+        <span class="menu-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/><path d="M7.5 6.2l9 4"/>
+          </svg>
+        </span>
+        <span>Caisses</span>
+      </button>
+      <button id="nav-records" class="nav-drawer-btn" aria-label="Records" title="Records &amp; classement">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>
+        </svg>
+      </button>
+      <button id="btn-drawer" class="nav-drawer-btn" aria-label="Plus" title="Boutique, chat, multi&hellip;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
+        </svg>
+      </button>
+    </div>
     <main id="stage" class="stage"></main>
 
     <!-- Panneau "Multi" (ouvert par le bouton en bas à droite) -->
@@ -66,48 +255,38 @@
       <div id="multi-body" class="multi-body"></div>
     </section>
 
-    <footer class="dock">
-      <div id="dock-hint" class="dock-hint" hidden>Bient&ocirc;t&nbsp;!</div>
-      <button class="dock-btn" data-hint="Machines : bient&ocirc;t d'autres jeux" aria-label="Machines">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="6" width="14" height="14" rx="1.5"/>
-          <line x1="6.5" y1="10" x2="6.5" y2="16"/>
-          <line x1="10" y1="10" x2="10" y2="16"/>
-          <line x1="13.5" y1="10" x2="13.5" y2="16"/>
-          <path d="M17 9h2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2"/>
-          <circle cx="19.5" cy="6.5" r="1.5"/>
-        </svg>
-      </button>
-      <button id="dock-cases" class="dock-btn" aria-label="Caisses">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 8l9-4 9 4-9 4-9-4z"/>
-          <path d="M3 8v8l9 4 9-4V8"/>
-          <path d="M12 12v8"/>
-          <path d="M7.5 6.2l9 4"/>
-        </svg>
-      </button>
+  </div>
+
+  <!-- volet latéral (ex-dock) — hors #app pour être vraiment plein écran -->
+  <div id="drawer-scrim" class="drawer-scrim" hidden></div>
+  <aside id="dock-drawer" class="dock-drawer" hidden>
+    <div class="drawer-head">
+      <span class="drawer-title">Menu</span>
+      <button id="drawer-close" class="drawer-close" aria-label="Fermer">&#10005;</button>
+    </div>
+    <div class="drawer-list">
       <button id="dock-shop" class="dock-btn" aria-label="Boutique">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8z"/>
-          <path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/>
+          <path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/>
         </svg>
+        <span class="dbtn-label">Boutique</span>
       </button>
       <button id="dock-chat" class="dock-btn" aria-label="Chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.8-.8L3 21l1.3-4.2A8.4 8.4 0 0 1 3.5 12 8.4 8.4 0 0 1 12 3.5 8.4 8.4 0 0 1 21 11.5z"/>
         </svg>
+        <span class="dbtn-label">Chat</span>
         <span id="chat-badge" class="chat-badge" hidden>0</span>
       </button>
       <button id="dock-multi" class="dock-btn" aria-label="Multijoueur">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="8" r="2.5"/>
-          <circle cx="16" cy="8" r="2.5"/>
-          <path d="M4 19c0-2.8 1.8-5 4-5s4 2.2 4 5"/>
-          <path d="M12 19c0-2.8 1.8-5 4-5s4 2.2 4 5"/>
+          <circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/>
+          <path d="M4 19c0-2.8 1.8-5 4-5s4 2.2 4 5"/><path d="M12 19c0-2.8 1.8-5 4-5s4 2.2 4 5"/>
         </svg>
+        <span class="dbtn-label">Multijoueur</span>
       </button>
-    </footer>
-  </div>
+    </div>
+  </aside>
 
   <!-- Outils partag&eacute;s -->
   <script src="js/version.js"></script>
@@ -142,12 +321,20 @@
   <script src="js/bonus.js"></script>
   <script src="js/shop.js"></script>
   <script src="js/cs-catalog.js"></script>
+  <script src="js/cs-images.js"></script>
   <script src="js/cases.js"></script>
+  <script src="js/cs-trade.js"></script>
+  <script src="js/cs-gifts.js"></script>
   <script src="js/news.js"></script>
   <script src="js/fairplay.js"></script>
   <script src="js/net-guard.js"></script>
   <script src="js/presence.js"></script>
+  <script src="js/achievements.js"></script>
+  <script src="js/patch.js"></script>
   <!-- Chef d'orchestre -->
   <script src="js/app.js"></script>
+  <!-- Coquille menu d'accueil + hub (doit charger APRÈS app.js) -->
+  <script src="js/menu-bg.js"></script>
+  <script src="js/shell.js"></script>
 </body>
 </html>

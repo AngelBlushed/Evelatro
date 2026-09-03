@@ -16,12 +16,15 @@
    =========================================================== */
 (() => {
   window.__EVELATRO_DEV__ = true;   // coupe la synchro du porte-monnaie cloud
-  const FAKE = 1e9; // solde affiché à l'interne ; "∞" à l'écran
+  const FAKE = 10000000; // solde fixe (10 M) — pas d'infini, ça faisait buguer l'affichage
 
   /* --- 1. Banque : crédits infinis, boutique gratuite --- */
   try {
     Bank.balance     = () => FAKE;
+    Bank.realBalance = () => FAKE;
     Bank.currentPeak = () => FAKE;
+    Bank.duelWin     = () => {};
+    Bank.duelLoss    = () => 0;
     Bank.canPlace    = () => true;
     Bank.place       = () => true;
     Bank.stake       = (a) => Math.max(0, Math.round(a || 0)); // "prend" la mise, ne retire rien
@@ -47,22 +50,10 @@
     setTimeout(() => clearInterval(t), 5000);
   }
 
-  /* --- 3. Affichage : "∞" au portefeuille + badge DEV --- */
-  function paintWallet() {
-    const c = document.getElementById('credits');
-    if (c && c.textContent !== '∞') c.textContent = '∞';
-  }
-
+  /* --- 3. Badge DEV (le portefeuille affiche 10 000 000, on n'y touche pas) --- */
   function init() {
-    paintWallet();
-    const c = document.getElementById('credits');
-    if (c) {
-      new MutationObserver(paintWallet)
-        .observe(c, { childList: true, characterData: true, subtree: true });
-    }
-
     const badge = document.createElement('div');
-    badge.textContent = 'DEV · crédits ∞ · hors classement';
+    badge.textContent = 'DEV · 10 M fixes · hors classement';
     badge.style.cssText = [
       'position:fixed', 'left:8px', 'bottom:64px', 'z-index:99999',
       'background:#b3123c', 'color:#fff',

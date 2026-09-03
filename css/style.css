@@ -2005,8 +2005,14 @@ body[data-game="friends"]     { --neon: #5865f2; }
   background: #1c2529; color: var(--text, #f4f1ef);
 }
 .ar-btn.is-on { background: #145a3f; border-color: #1DB98A; color: #d8fff0; }
+.ar-btn.is-paused { background: #4a3a12; border-color: #E2B458; color: #ffe6ad; }
 .ar-btn.is-ready { background: #0c0c0e; border-color: #E2B458; color: #ffe6ad; }
-.ar-btn.is-locked { background: #16191d; color: #6b7075; cursor: not-allowed; border-style: dashed; }
+.ar-btn.is-locked { background: #16191d; color: #7a7f85; cursor: help; border-style: dashed; }
+.ar-count {
+  font-size: .78rem; color: var(--muted, #a6a6c0); font-variant-numeric: tabular-nums;
+  background: rgba(255,255,255,.05); border: 1px solid var(--line2, #ffffff1f);
+  padding: 4px 9px; border-radius: 999px;
+}
 .ar-timer {
   font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: .04em;
   color: #E2B458; background: rgba(226,180,88,.1); border: 1px solid #E2B45855;

@@ -290,8 +290,26 @@ const Multiplayer = (() => {
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       if (!row) return null;
-      return { credits: Number(row.credits), flagged: !!row.flagged, flagReason: row.flag_reason || null };
+      return {
+        credits: Number(row.credits),
+        flagged: !!row.flagged,
+        flagReason: row.flag_reason || null,
+        csInv: row.cs_inv || null,
+        bonuses: row.bonuses || null,
+      };
     } catch (e) { console.warn('walletState', e.message); return null; }
+  }
+
+  /* Sauvegarde serveur (filet anti faux-positif) de l'inventaire de caisses
+     et des bonus boutique. Passe null pour ne pas toucher à l'un des deux. */
+  async function gameSync(csInv, bonuses) {
+    if (!currentUser) return;
+    try {
+      await client.rpc('game_sync', {
+        p_cs_inv: csInv == null ? null : csInv,
+        p_bonuses: bonuses == null ? null : bonuses,
+      });
+    } catch (e) { console.warn('gameSync', e.message); }
   }
   async function walletCommit(entries) {
     if (!currentUser || !Array.isArray(entries) || !entries.length) return null;
@@ -434,6 +452,118 @@ const Multiplayer = (() => {
     };
   }
 
+  /* --- Comptoir d'échange (skins CS entre joueurs) --- */
+
+  // miroir public de MON inventaire de caisses (pour que les autres le voient)
+  async function csInvPush(items) {
+    if (!currentUser) return false;
+    try {
+      const { error } = await client.from('cs_inventories').upsert({
+        user_id: currentUser.id, pseudo: currentUser.name, avatar_url: currentUser.avatar,
+        items: Array.isArray(items) ? items.slice(0, 500) : [],
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      if (error) throw error;
+      return true;
+    } catch (e) { console.warn('csInvPush', e.message); return false; }
+  }
+  // inventaire public d'un autre joueur
+  async function csInvGet(userId) {
+    if (!userId) return null;
+    try {
+      const { data, error } = await client.from('cs_inventories')
+        .select('user_id,pseudo,avatar_url,items,updated_at').eq('user_id', userId).maybeSingle();
+      if (error) throw error;
+      return data || null;
+    } catch (e) { console.warn('csInvGet', e.message); return null; }
+  }
+  // liste des joueurs qui ont un inventaire public non vide
+  async function csTraders() {
+    try {
+      const { data, error } = await client.from('cs_inventories')
+        .select('user_id,pseudo,avatar_url,items,updated_at')
+        .order('updated_at', { ascending: false }).limit(200);
+      if (error) throw error;
+      return (data || [])
+        .filter(r => r.user_id !== (currentUser && currentUser.id) && Array.isArray(r.items) && r.items.length)
+        .map(r => ({ id: r.user_id, name: r.pseudo || 'Joueur', avatar: r.avatar_url || null,
+          count: r.items.length, items: r.items }));
+    } catch (e) { console.warn('csTraders', e.message); return null; }
+  }
+  // A crée une demande : je donne offerSkin + offerCredits, je veux wantSkin (à toId)
+  async function tradeCreate({ toId, toName, offerSkin, offerCredits, wantSkin }) {
+    if (!currentUser) return null;
+    try {
+      const { data, error } = await client.from('cs_trades').insert({
+        from_id: currentUser.id, from_pseudo: currentUser.name,
+        to_id: toId, to_pseudo: toName || null,
+        offer_skin: offerSkin, offer_credits: Math.max(0, Math.round(offerCredits || 0)),
+        want_skin: wantSkin, status: 'pending',
+      }).select().single();
+      if (error) throw error;
+      return data;
+    } catch (e) { console.warn('tradeCreate', e.message); return null; }
+  }
+  async function tradeIncoming() {
+    if (!currentUser) return [];
+    try {
+      const { data, error } = await client.from('cs_trades')
+        .select('*').eq('to_id', currentUser.id).eq('status', 'pending')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    } catch (e) { console.warn('tradeIncoming', e.message); return []; }
+  }
+  async function tradeOutgoing() {
+    if (!currentUser) return [];
+    try {
+      const { data, error } = await client.from('cs_trades')
+        .select('*').eq('from_id', currentUser.id)
+        .order('created_at', { ascending: false }).limit(20);
+      if (error) throw error;
+      return data || [];
+    } catch (e) { return []; }
+  }
+  // B répond : accept = true/false. L'échange atomique est fait côté serveur.
+  async function tradeRespond(id, accept) {
+    if (!currentUser) return null;
+    try {
+      const { data, error } = await client.rpc('cs_trade_respond', { p_id: id, p_accept: !!accept });
+      if (error) throw error;
+      return data || null;
+    } catch (e) { console.warn('tradeRespond', e.message); return { status: 'error', reason: e.message }; }
+  }
+  async function tradeCancel(id) {
+    if (!currentUser) return false;
+    try {
+      const { error } = await client.from('cs_trades')
+        .update({ status: 'cancelled', resolved_at: new Date().toISOString() })
+        .eq('id', id).eq('from_id', currentUser.id).eq('status', 'pending');
+      if (error) throw error;
+      return true;
+    } catch (e) { return false; }
+  }
+  let tradeChannel = null;
+  const tradeSubs = [];
+  function subscribeTrades(fn) {
+    tradeSubs.push(fn);
+    if (!tradeChannel && currentUser) {
+      tradeChannel = client.channel('evelatro-trades-' + currentUser.id)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cs_trades' },
+          p => {
+            const row = p.new || p.old;
+            if (!row || !currentUser) return;
+            if (row.from_id !== currentUser.id && row.to_id !== currentUser.id) return;
+            tradeSubs.forEach(f => { try { f(row, p.eventType); } catch (e) {} });
+          })
+        .subscribe();
+    }
+    return () => {
+      const i = tradeSubs.indexOf(fn); if (i >= 0) tradeSubs.splice(i, 1);
+      if (!tradeSubs.length && tradeChannel) { try { client.removeChannel(tradeChannel); } catch (e) {} tradeChannel = null; }
+    };
+  }
+
   function onChange(fn) {
     listeners.push(fn);
     return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); };
@@ -447,8 +577,10 @@ const Multiplayer = (() => {
     version: () => window.APP_BUILD || '',
     sendMessage, recentMessages, subscribeMessages,
     challenge, updateDuel, currentDuel, getDuel, subscribeDuels,
-    walletGet, walletPush, walletState, walletCommit, subscribeWallet,
+    walletGet, walletPush, walletState, walletCommit, gameSync, subscribeWallet,
     skinsGet, skinsPush, subscribeSkins,
+    csInvPush, csInvGet, csTraders,
+    tradeCreate, tradeIncoming, tradeOutgoing, tradeRespond, tradeCancel, subscribeTrades,
     canConnect: () => true,
     lastAuthError: () => authError,
     clearAuthError: () => { authError = null; },

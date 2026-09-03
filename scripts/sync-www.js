@@ -21,7 +21,8 @@ function copy(src, dst) {
 
 rmrf(WWW);
 fs.mkdirSync(WWW);
-for (const item of ['index.html', 'evelatro.png', 'croupiere.png', 'manifest.json', 'css', 'js', 'croupiers']) {
+for (const item of ['index.html', 'evelatro.png', 'croupiere.png', 'manifest.json',
+  'fondcaisse.png', 'fondinventory.png', 'css', 'js', 'croupiers', 'cs']) {
   copy(path.join(ROOT, item), path.join(WWW, item));
 }
 console.log('www/ synchronisé.');

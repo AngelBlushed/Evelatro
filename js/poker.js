@@ -76,11 +76,37 @@ Games.poker = {
     const canEditBet = () => phase === 'idle' || phase === 'done';
     const betWrap = betBar(() => bet, v => { if (canEditBet()) bet = v; }, { onChange: renderControls });
 
-    // tableau des gains, compact : deux colonnes
+    // tableau des gains, avec des mini-cartes qui montrent la main aux débutants
+    const ILLUS = {
+      royal:    [['A', '♠'], ['K', '♠'], ['Q', '♠'], ['J', '♠'], ['10', '♠']],
+      sflush:   [['9', '♥'], ['8', '♥'], ['7', '♥'], ['6', '♥'], ['5', '♥']],
+      four:     [['K', '♠'], ['K', '♥'], ['K', '♦'], ['K', '♣'], '|', ['4', '♠', true]],
+      full:     [['Q', '♠'], ['Q', '♥'], ['Q', '♦'], '|', ['K', '♣'], ['K', '♠']],
+      flush:    [['A', '♦'], ['J', '♦'], ['8', '♦'], ['5', '♦'], ['3', '♦']],
+      straight: [['9', '♣'], ['8', '♥'], ['7', '♠'], ['6', '♦'], ['5', '♣']],
+      three:    [['7', '♠'], ['7', '♥'], ['7', '♦'], '|', ['K', '♣', true], ['2', '♠', true]],
+      twopair:  [['A', '♠'], ['A', '♥'], '|', ['8', '♣'], ['8', '♦'], '|', ['3', '♠', true]],
+      jacks:    [['J', '♠'], ['J', '♥'], '|', ['9', '♣', true], ['5', '♦', true], ['2', '♠', true]],
+    };
+    function miniHand(key) {
+      const wrap = el('div', { class: 'pg-mini' });
+      (ILLUS[key] || []).forEach(item => {
+        if (item === '|') { wrap.append(el('span', { class: 'mini-sep' })); return; }
+        const [r, s, dim] = item;
+        const red = s === '♥' || s === '♦';
+        wrap.append(el('span', {
+          class: 'mini-card' + (red ? ' mini-red' : '') + (dim ? ' mini-dim' : ''),
+        }, el('i', { text: r }), el('u', { text: s })));
+      });
+      return wrap;
+    }
     const table = el('div', { class: 'paytable-grid' },
       el('div', { class: 'paytable-grid-title', text: 'Gains (× la mise)' }),
-      ...PAYS.map(([, name, mult]) =>
-        el('div', { class: 'pg-row' }, el('span', { text: name }), el('b', { text: '×' + mult }))),
+      ...PAYS.map(([key, name, mult]) =>
+        el('div', { class: 'pg-row' },
+          el('span', { class: 'pg-name', text: name }),
+          miniHand(key),
+          el('b', { text: '×' + mult }))),
     );
 
     body.append(betWrap, croupier.el, handRow, holdRow, banner, controls, table);

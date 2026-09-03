@@ -177,8 +177,9 @@ const Duel = (() => {
       if (rn !== localRoundNo || !localRoundStart) { localRoundNo = rn; localRoundStart = Date.now(); }
 
       // le challenger fixe sa mise dès que l'adversaire a accepté
+      // (realBalance : pendant le combat Bank.balance() renvoie 1e9 !)
       if (mine && d.chal_stake == null) {
-        const stake = Math.max(1, Math.floor(d.pct / 100 * Bank.balance()));
+        const stake = Math.max(1, Math.floor(d.pct / 100 * Bank.realBalance()));
         apply(Multiplayer.updateDuel(d.id, { chal_stake: stake }));
       }
     }
@@ -193,10 +194,10 @@ const Duel = (() => {
       const iWon = me() && d.winner_id === me().id;
       const iLost = me() && d.winner_id && d.winner_id !== me().id;
       if (iWon) {
-        if (oppStake > 0) Bank.payout(oppStake);
+        if (oppStake > 0) Bank.duelWin(oppStake);
         Activity.log({ game: 'Duel VS', detail: 'Duel gagné contre ' + other, gain: oppStake });
       } else if (iLost) {
-        const paid = myStake > 0 ? Bank.stake(myStake) : 0;
+        const paid = myStake > 0 ? Bank.duelLoss(myStake) : 0;
         Activity.log({ game: 'Duel VS', detail: 'Duel perdu contre ' + other, gain: -paid });
       }
       setTimeout(() => { if (duel && duel.id === settledId) { duel = null; emit(); } }, 10000);
@@ -255,7 +256,7 @@ const Duel = (() => {
   function accept() {
     if (!duel || duel.status !== 'pending' || mine) return;
     if (versionMismatch()) return;
-    const stake = Math.max(1, Math.floor(duel.pct / 100 * Bank.balance()));
+    const stake = Math.max(1, Math.floor(duel.pct / 100 * Bank.realBalance()));
     localRoundStart = Date.now(); localRoundNo = 1;
     apply(Multiplayer.updateDuel(duel.id, {
       status: 'accepted', opp_stake: stake,

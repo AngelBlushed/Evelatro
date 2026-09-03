@@ -69,6 +69,11 @@ npx wrangler login
 ```
 → navigateur → crée un compte Cloudflare gratuit → Autoriser.
 
+> ⚠️ La branche de **production** du projet Pages s'appelle **`Evelatro`**
+> (avec un E majuscule). Les scripts `npm run site:deploy` et `npm run release`
+> l'utilisent déjà. Ne déploie jamais à la main sans `--branch=Evelatro`,
+> sinon `evelatro.pages.dev` ne se met plus à jour (ça fait un "preview").
+
 ### 4. Railway (le bot)
 
 ```

@@ -11,6 +11,8 @@ const AntiCheat = (() => {
     reason_interdit: 'Mouvement de crédits réservé au serveur',
     gain_impossible: 'Gain impossible par rapport à la mise',
     gain_lot_impossible: 'Gains impossibles sur la session',
+    gros_gains_repetes: 'Gros gains répétés',
+    duel_gains_repetes: 'Gains de duel démesurés répétés',
     flag_serveur: 'Compte signalé par le serveur',
     ratio_gains_anormal: 'Ratio gains / mises anormal',
   };

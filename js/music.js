@@ -186,6 +186,57 @@ const Music = (() => {
         return 16 * 4 * b;
       },
     },
+    {
+      // --- BÊTA 1.3 : musique du menu d'accueil.
+      //     Lounge chaud et lent (piano électrique feutré, contrebasse douce,
+      //     vibraphone épars). menuOnly -> hors rotation ; via Music.play('menu').
+      id: 'menu', name: 'Accueil (lounge)', bpm: 56, menuOnly: true,
+      render(out, t0) {
+        const b = 60 / this.bpm;
+        const bar = 4 * b;
+        // ii - V - I - VI  en Fa majeur, deux tours (variation légère au 2e)
+        const prog = [[53, 'min7'], [46, 'dom7'], [51, 'maj7'], [48, 'min7']];
+
+        for (let pass = 0; pass < 2; pass++) {
+          prog.forEach(([root, kind], i) => {
+            const t = t0 + (pass * prog.length + i) * bar;
+            const notes = chord(root, kind);
+            // dernière mesure de la boucle : on n'y met AUCUN son à longue traîne,
+            // pour que la boucle se recolle sans clic.
+            const last = (pass === 1 && i === prog.length - 1);
+
+            // piano électrique feutré : accord tenu doux + re-frappe à mi-mesure
+            const offs = last ? [0] : [0, 2];
+            offs.forEach(off => {
+              const dur = (off ? 1.6 : 2.0) * b;
+              notes.forEach((f, k) => {
+                tone(out, t + off * b, dur, f,
+                  { type: 'triangle', gain: 0.03 - k * 0.003, cutoff: 1500, a: 0.05, r: last ? 0.5 : 0.9 });
+                tone(out, t + off * b, dur, f * 2,
+                  { type: 'sine', gain: 0.008, a: 0.05, r: 0.7 });
+              });
+            });
+
+            // contrebasse : fondamentale ronde + une note de passage (sauf dernière mesure)
+            tone(out, t, 1.9 * b, mtof(root - 12), { type: 'sine', gain: 0.11, a: 0.03, r: 0.4, cutoff: 400 });
+            if (!last) {
+              tone(out, t + 2.5 * b, 1.2 * b, mtof(root - 12 + (i % 2 ? 5 : 7)),
+                { type: 'sine', gain: 0.095, a: 0.03, r: 0.4, cutoff: 400 });
+            }
+
+            // vibraphone : mélodie très éparse, douce, décalée au 2e tour (jamais sur la dernière mesure)
+            const mel = [[0.5, 12], [1.75, 16], [3.25, 14], [null, null]];
+            const m = mel[(i + (pass ? 2 : 0)) % mel.length];
+            if (!last && m[0] != null && Math.random() < 0.9) {
+              const f = mtof(root + m[1]);
+              tone(out, t + m[0] * b, 1.9 * b, f, { type: 'sine', gain: 0.024, a: 0.02, r: 1.4 });
+              tone(out, t + m[0] * b, 1.9 * b, f * 1.5, { type: 'sine', gain: 0.006, a: 0.02, r: 1.2 });
+            }
+          });
+        }
+        return prog.length * 2 * bar;
+      },
+    },
   ];
 
   /* ---------------------------------------------------------------
@@ -244,7 +295,8 @@ const Music = (() => {
   let frozenProg = 0;
   let genId = 0;             // pour ignorer un rendu qui revient trop tard
 
-  const playable = () => TRACKS.map((_, i) => i).filter(i => !blacklist.has(TRACKS[i].id));
+  // rotation normale : on exclut la blacklist ET les morceaux "menuOnly"
+  const playable = () => TRACKS.map((_, i) => i).filter(i => !blacklist.has(TRACKS[i].id) && !TRACKS[i].menuOnly);
 
   function stopSource() {
     clearTimeout(advanceTimer);
@@ -259,6 +311,8 @@ const Music = (() => {
   function armAdvance(seconds) {
     clearTimeout(advanceTimer);
     advanceTimer = null;
+    // un morceau "menuOnly" (musique du menu) boucle indéfiniment, on n'enchaîne jamais
+    if (TRACKS[current] && TRACKS[current].menuOnly) return;
     if (repeat === 'all') advanceTimer = setTimeout(goNextTrack, Math.max(500, seconds * 1000));
   }
 
@@ -402,8 +456,11 @@ const Music = (() => {
   const isBlacklisted = id => blacklist.has(id);
 
   function tracks() {
-    return TRACKS.map((t, i) => ({ id: t.id, name: t.name, bpm: t.bpm, current: i === current, blacklisted: blacklist.has(t.id) }));
+    // le morceau du menu n'apparaît pas dans le lecteur (il se gère tout seul)
+    return TRACKS.filter(t => !t.menuOnly)
+      .map(t => ({ id: t.id, name: t.name, bpm: t.bpm, current: TRACKS[current] && TRACKS[current].id === t.id, blacklisted: blacklist.has(t.id) }));
   }
+  const isMenuTrack = id => { const t = TRACKS.find(x => x.id === id); return !!(t && t.menuOnly); };
   function state() {
     return { playing, current, currentName: current >= 0 ? TRACKS[current].name : null, repeat, shuffle };
   }
@@ -413,14 +470,24 @@ const Music = (() => {
     return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); };
   }
 
+  // BÊTA : jouer le morceau du menu d'accueil ; en revenir vers la rotation normale
+  function playMenu() { try { play('menu'); } catch (e) {} }
+  function exitMenu() {
+    if (TRACKS[current] && TRACKS[current].menuOnly) { try { next(); } catch (e) {} }
+  }
+
   // --- démarrage automatique au 1er contact utilisateur ---
+  // BÊTA : le shell (menu d'accueil) prend la main -> il appelle suppressAutoStart()
+  //        puis gère lui-même playMenu()/exitMenu().
   let autoStarted = false;
+  function suppressAutoStart() { autoStarted = true; }
   function autoStart() {
     if (autoStarted) return;
     autoStarted = true;
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('evelatro-music-state') || '{}'); } catch (e) {}
-    try { play(saved.id || undefined); }
+    const wanted = (saved.id && !isMenuTrack(saved.id)) ? saved.id : undefined;
+    try { play(wanted); }
     catch (e) { try { play(); } catch (e2) { /* tant pis */ } }
   }
   ['pointerdown', 'keydown', 'click', 'touchstart'].forEach(ev =>
@@ -428,6 +495,7 @@ const Music = (() => {
 
   return {
     play, pause, resume, toggle, stop, next, prev,
+    playMenu, exitMenu, suppressAutoStart,
     progress, setVolume, getVolume,
     setRepeat, getRepeat, setShuffle, getShuffle,
     toggleBlacklist, isBlacklisted, tracks, state, onChange,

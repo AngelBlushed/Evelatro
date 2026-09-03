@@ -20,7 +20,8 @@ function copy(src, dst) {
 }
 
 fs.mkdirSync(DST, { recursive: true });
-for (const item of ['index.html', 'evelatro.png', 'croupiere.png', 'manifest.json', 'css', 'js', 'croupiers']) {
+for (const item of ['index.html', 'evelatro.png', 'croupiere.png', 'manifest.json',
+  'fondcaisse.png', 'fondinventory.png', 'css', 'js', 'croupiers', 'cs']) {
   const src = path.join(ROOT, item);
   if (!fs.existsSync(src)) continue;
   const dst = path.join(DST, item);

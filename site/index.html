@@ -329,7 +329,7 @@ footer b{background:linear-gradient(90deg,var(--magenta),var(--violet));-webkit-
       <h2>Petit jeu, vrai soin</h2>
     </div>
     <div class="feats-grid">
-      <div class="feat a reveal"><div class="dot"></div><div><h3>Navigateur, PC et téléphone</h3><p>Jouable direct dans le navigateur, ou en appli Windows (.exe) et Android (.apk) — même code partout.</p></div></div>
+      <div class="feat a reveal"><div class="dot"></div><div><h3>Navigateur, PC et téléphone</h3><p>Jouable direct dans le navigateur, ou en appli Windows (.zip) et Android (.apk) — même code partout.</p></div></div>
       <div class="feat b reveal"><div class="dot"></div><div><h3>Multijoueur Discord</h3><p>OAuth Discord + Supabase : classement, flux d'activité live, chat et duels, synchronisés PC ⇄ mobile.</p></div></div>
       <div class="feat c reveal"><div class="dot"></div><div><h3>Tout le son est synthétisé</h3><p>Aucun fichier audio : musiques et effets générés à la volée. Trois volumes réglables (musique, jeu, voix).</p></div></div>
       <div class="feat d reveal"><div class="dot"></div><div><h3>Zéro argent, zéro tracking</h3><p>Crédits fictifs, recharge auto à 0. Rien n'est collecté, tout tourne en local.</p></div></div>
@@ -353,7 +353,7 @@ footer b{background:linear-gradient(90deg,var(--magenta),var(--violet));-webkit-
 
       <div class="btns-dl">
         <div class="dl-group">
-          <a class="btn btn-gold" href="EveLatro.exe" download>Windows &middot; .exe</a>
+          <a class="btn btn-gold" href="EveLatro-Windows.zip" download>Windows &middot; .zip</a>
           <span class="btn btn-soon" aria-disabled="true">Linux &middot; bientôt</span>
         </div>
         <div class="dl-group">
@@ -367,7 +367,7 @@ footer b{background:linear-gradient(90deg,var(--magenta),var(--violet));-webkit-
       <details class="faq">
         <summary>FAQ téléchargement + aide</summary>
         <div class="faq-in">
-          <p><b>Windows</b> — l'appli n'est pas signée (ça coûte cher chaque année). Au 1<sup>er</sup> lancement, SmartScreen peut afficher « Windows a protégé votre ordinateur » : clique sur <b>Informations complémentaires</b> puis <b>Exécuter quand même</b>. Rien de malveillant.</p>
+          <p><b>Windows</b> — décompresse le <b>.zip</b> (clic droit → « Extraire tout »), ouvre le dossier et lance <b>EveLatro.exe</b>. L'appli n'est pas signée (ça coûte cher chaque année) : au 1<sup>er</sup> lancement, SmartScreen peut afficher « Windows a protégé votre ordinateur » → clique sur <b>Informations complémentaires</b> puis <b>Exécuter quand même</b>. Rien de malveillant.</p>
           <p><b>Android</b> — ouvre le .apk, autorise « installer des applis inconnues » pour ta source, puis installe.</p>
         </div>
       </details>
@@ -383,10 +383,10 @@ footer b{background:linear-gradient(90deg,var(--magenta),var(--violet));-webkit-
 </footer>
 
 <script id="dl-links">/* liens de téléchargement — réécrits par scripts/release.js */
-window.DL_WIN="EveLatro.exe";window.DL_APK="EveLatro.apk";window.PLAY_URL="play/";</script>
+window.DL_WIN="https://github.com/AngelBlushed/evelatro/releases/download/v1.2.0/EveLatro-Windows.zip";window.DL_APK="https://github.com/AngelBlushed/evelatro/releases/download/v1.2.0/EveLatro.apk";window.PLAY_URL="play/";</script>
 <script>
-  var W=window.DL_WIN||"EveLatro.exe", A=window.DL_APK||"EveLatro.apk", P=window.PLAY_URL||"play/";
-  document.querySelectorAll('a[href="EveLatro.exe"]').forEach(function(a){a.href=W;});
+  var W=window.DL_WIN||"EveLatro-Windows.zip", A=window.DL_APK||"EveLatro.apk", P=window.PLAY_URL||"play/";
+  document.querySelectorAll('a[href="EveLatro-Windows.zip"]').forEach(function(a){a.href=W;});
   document.querySelectorAll('a[href="EveLatro.apk"]').forEach(function(a){a.href=A;});
   document.querySelectorAll('[data-play]').forEach(function(a){a.href=P;a.removeAttribute('data-play');});
 

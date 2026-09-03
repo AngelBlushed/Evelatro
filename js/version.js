@@ -5,7 +5,7 @@
    Sert a : afficher la version dans le multi, et empecher les duels
    entre versions differentes.
    =========================================================== */
-window.APP_VERSION = '1.2';
+window.APP_VERSION = '1.3';
 
 window.APP_PLATFORM = (() => {
   try {

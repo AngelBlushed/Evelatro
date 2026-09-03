@@ -21,6 +21,16 @@
      /news
         -> ouvre un formulaire pour editer le panneau "Quoi de neuf ?"
            qui s'affiche au lancement du jeu.
+     /warn  membre:@x  raison:...
+     /unwarn  membre:@x
+        -> salon d'aide : +1 warn ; a 3 warns le membre passe en lecture
+           seule (ni message, ni emoji, ni fichier). L'embed de rappel du
+           salon est re-poste a chaque message.
+     /emilia-tann
+        -> poste l'embed du jeu "Emiliaaa Tann" + un 2e message avec le
+           lien seul (pour l'apercu du site).
+     /tag-purg
+        -> embed "le tag PURG est dispo" + un 2e message @everyone.
 
    La config (salons choisis) est gardee dans la table Supabase
    "bot_config" -> survit aux redemarrages / redeploys Railway.
@@ -49,6 +59,7 @@ import {
 } from 'discord.js';
 import { createClient } from '@supabase/supabase-js';
 import { makeShared, menuPayload, skinsPayload, handleButton, closeIdleSession } from './games.js';
+import { CS } from './cs-catalog.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -71,10 +82,13 @@ if (!DISCORD_TOKEN || !SUPABASE_URL || !SUPABASE_KEY) {
 
 const GOLD = 0xE2B458, PINK = 0xFF3D7F, GREEN = 0x1DB98A, RED = 0xE5595F, INK = 0x1D272C;
 
+// Lien du site (Cloudflare Pages). SITE_URL peut le surcharger via l'environnement.
+const GAME_URL = SITE_URL || 'https://evelatro.pages.dev/';
+
 const db = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
 const shared = makeShared(db);
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessageReactions],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildMessages],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
@@ -440,6 +454,109 @@ async function ensureRolePanel() {
   console.log(`role-panel posté dans #${channel.name} (msg ${msg.id}).`);
 }
 
+/* ---------- salon d'aide : rappel + warns ----------
+   - un embed de rappel, re-posté (l'ancien est supprimé) à chaque message du salon
+   - /warn : +1 warn ; à 3 warns -> le membre ne peut plus écrire ici (lecture seule)
+   - /unwarn : remet le compteur à zéro et rend la parole                       */
+const CHAT_RULES_CHANNEL = '1543740706714030100';   // salon #aide
+const WARN_LIMIT = 3;
+
+function helpRulesEmbed() {
+  return new EmbedBuilder()
+    .setColor(GOLD)
+    .setAuthor({ name: 'EveLatro!', iconURL: 'attachment://emilia.png' })
+    .setTitle('📌  Salon d\'aide — à lire')
+    .setDescription([
+      '**Vérifiez de ne pas répéter** un truc déjà dit.',
+      'Pour **discuter**, allez dans un autre salon.',
+      '',
+      `Tout bavardage, ou répéter quelque chose de déjà dit, entraîne **1 warn**.`,
+      `À partir de **${WARN_LIMIT} warns**, il devient impossible d'écrire dans le salon d'aide`,
+      '(ni message, ni emoji, ni image ou fichier) — vous pourrez seulement le lire.',
+    ].join('\n'));
+}
+
+// Re-poste l'embed (supprime le précédent). Anti-spam : au plus 1 fois / 8 s.
+let helpRepostTimer = null;
+async function repostHelpRules() {
+  const channel = await fetchChannel(CHAT_RULES_CHANNEL);
+  if (!channel) { console.warn(`chat-rules : salon ${CHAT_RULES_CHANNEL} introuvable.`); return; }
+  const cfg = await cfgGet('chat_rules');
+  if (cfg && cfg.message_id) {
+    const old = await channel.messages.fetch(cfg.message_id).catch(() => null);
+    if (old && old.deletable) await old.delete().catch(() => {});
+  }
+  const att = emiliaAttachment();
+  const msg = await channel.send({ embeds: [helpRulesEmbed()], files: att ? [att] : [], allowedMentions: { parse: [] } })
+    .catch(e => { console.warn('chat-rules repost KO :', e.message); return null; });
+  if (msg) await cfgSet('chat_rules', { channel_id: channel.id, message_id: msg.id });
+}
+
+async function ensureChatRules() {
+  const channel = await fetchChannel(CHAT_RULES_CHANNEL);
+  if (!channel) { console.warn(`chat-rules : salon ${CHAT_RULES_CHANNEL} introuvable.`); return; }
+  const cfg = await cfgGet('chat_rules');
+  if (cfg && cfg.message_id && cfg.channel_id === channel.id) {
+    const existing = await channel.messages.fetch(cfg.message_id).catch(() => null);
+    if (existing) { console.log(`chat-rules déjà posté (#${channel.name}).`); return; }
+  }
+  await repostHelpRules();
+  console.log(`chat-rules posté dans #${channel.name}.`);
+}
+
+// à chaque message dans le salon d'aide -> on remet l'embed en bas (débounce 8 s)
+client.on(Events.MessageCreate, (m) => {
+  try {
+    if (!m || m.channelId !== CHAT_RULES_CHANNEL) return;
+    if (m.author && client.user && m.author.id === client.user.id) return;   // pas nos propres reposts
+    if (helpRepostTimer) return;
+    helpRepostTimer = setTimeout(() => { helpRepostTimer = null; repostHelpRules(); }, 8000);
+  } catch (e) { console.warn('MessageCreate (chat-rules) :', e.message); }
+});
+
+/* donne / retire des warns dans le salon d'aide */
+async function addWarn(member, raison) {
+  const warns = (await cfgGet('help_warns')) || {};
+  const n = (warns[member.id] || 0) + 1;
+  warns[member.id] = n;
+  await cfgSet('help_warns', warns);
+
+  let muted = false, muteErr = null;
+  if (n >= WARN_LIMIT) {
+    const channel = await fetchChannel(CHAT_RULES_CHANNEL);
+    if (channel) {
+      try {
+        await channel.permissionOverwrites.edit(member.id, {
+          ViewChannel: true,
+          SendMessages: false,
+          SendMessagesInThreads: false,
+          CreatePublicThreads: false,
+          CreatePrivateThreads: false,
+          AddReactions: false,
+          AttachFiles: false,
+          EmbedLinks: false,
+          UseExternalEmojis: false,
+          UseApplicationCommands: false,
+        }, { reason: `${WARN_LIMIT} warns — salon d'aide${raison ? ' : ' + raison : ''}` });
+        muted = true;
+      } catch (e) { muteErr = e.message; }
+    } else muteErr = 'salon introuvable';
+  }
+  return { n, muted, muteErr };
+}
+
+async function clearWarn(member) {
+  const warns = (await cfgGet('help_warns')) || {};
+  delete warns[member.id];
+  await cfgSet('help_warns', warns);
+  const channel = await fetchChannel(CHAT_RULES_CHANNEL);
+  if (channel) {
+    try { await channel.permissionOverwrites.delete(member.id, 'warns retirés'); }
+    catch (e) { return e.message; }
+  }
+  return null;
+}
+
 async function handleRolePanelReaction(reaction, user, add) {
   try {
     if (user.bot) return;
@@ -523,6 +640,25 @@ const COMMANDS = [
     .setDefaultMemberPermissions(ADMIN)
     .addChannelOption(o => o.setName('salon').setDescription('Où poster').setRequired(true)),
 
+  new SlashCommandBuilder().setName('warn')
+    .setDescription('Donner un warn à un membre (salon d\'aide) — 3 warns = lecture seule')
+    .setDefaultMemberPermissions(ADMIN)
+    .addUserOption(o => o.setName('membre').setDescription('Qui').setRequired(true))
+    .addStringOption(o => o.setName('raison').setDescription('Raison (facultatif)')),
+
+  new SlashCommandBuilder().setName('unwarn')
+    .setDescription('Remettre les warns d\'un membre à zéro et lui rendre la parole (salon d\'aide)')
+    .setDefaultMemberPermissions(ADMIN)
+    .addUserOption(o => o.setName('membre').setDescription('Qui').setRequired(true)),
+
+  new SlashCommandBuilder().setName('emilia-tann')
+    .setDescription('Annoncer le jeu Emiliaaa Tann (embed + lien avec aperçu)')
+    .setDefaultMemberPermissions(ADMIN),
+
+  new SlashCommandBuilder().setName('tag-purg')
+    .setDescription('Annoncer que le tag PURG est dispo (embed + @everyone)')
+    .setDefaultMemberPermissions(ADMIN),
+
   new SlashCommandBuilder().setName('help')
     .setDescription('La liste des commandes joueur d\'EveLatro!'),
 
@@ -561,7 +697,45 @@ const COMMANDS = [
     .addIntegerOption(o => o.setName('fiche').setDescription('N° de fiche (voir /triche-liste)'))
     .addUserOption(o => o.setName('joueur').setDescription('...ou le membre Discord'))
     .addStringOption(o => o.setName('discord_id').setDescription('...ou son ID Discord')),
+
+  new SlashCommandBuilder().setName('donner-skin')
+    .setDescription('Offrir un skin de caisse à un joueur (réservé)')
+    .setDefaultMemberPermissions(ADMIN)
+    .addUserOption(o => o.setName('joueur').setDescription('À qui').setRequired(true))
+    .addStringOption(o => {
+      o.setName('caisse').setDescription('Quelle caisse').setRequired(true);
+      CS.crates.slice(0, 25).forEach(c => o.addChoices({ name: c.name, value: c.id }));
+      return o;
+    })
+    .addStringOption(o => o.setName('rarete').setDescription('Forcer une rareté (sinon aléatoire pondérée)')
+      .addChoices(
+        { name: 'Bleu — Rare', value: 'bleu' },
+        { name: 'Violet — Mythique', value: 'violet' },
+        { name: 'Rose — Légendaire', value: 'rose' },
+        { name: 'Rouge — Ancestral', value: 'rouge' },
+        { name: 'Or — couteau / gants', value: 'or' },
+      )),
 ].map(c => c.toJSON());
+
+/* ---------- tire un skin (pour /donner-skin) ---------- */
+function rollGiftSkin(crateId, forceRar) {
+  const cr = CS.crate(crateId);
+  if (!cr) return null;
+  let rar = forceRar;
+  if (!rar || !cr.skins.some(s => s.rarity === rar)) {
+    const pool = CS.RARITY_ORDER.filter(k => cr.skins.some(s => s.rarity === k));
+    const w = pool.map(k => CS.RARITY[k].odds);
+    let r = Math.random() * w.reduce((a, b) => a + b, 0);
+    rar = pool[0];
+    for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) { rar = pool[i]; break; } }
+  }
+  const pool = cr.skins.filter(s => s.rarity === rar);
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  const wr = CS.WEARS[Math.floor(Math.random() * CS.WEARS.length)];
+  const stat = Math.random() < 0.1;
+  const price = Math.max(1, Math.round(base.price * wr.mult * (stat ? 1.6 : 1)));
+  return { crate: cr.id, crateName: cr.name, weapon: base.weapon, name: base.name, rarity: rar, wear: wr.s, stat, price };
+}
 
 /* ---------- retrouver un profil par ID Discord OU par pseudo ---------- */
 async function findProfile({ discordId, pseudo }) {
@@ -651,7 +825,7 @@ async function submitNews(i) {
     coming: g('coming') || null,
     images,
     cta_label: (cur && cur.cta_label) || 'Mettre à jour',
-    cta_url: (cur && cur.cta_url) || SITE_URL || null,
+    cta_url: (cur && cur.cta_url) || GAME_URL || null,
     updated_at: new Date().toISOString(),
   };
   const { error } = await db.from('news').upsert(row);
@@ -692,6 +866,24 @@ client.once(Events.ClientReady, async (c) => {
   }
   console.log(`ℹ  Ré-inviter : https://discord.com/api/oauth2/authorize?client_id=${c.application.id}&permissions=268520512&scope=bot%20applications.commands`);
 
+  // --- Tag du serveur sur le bot ---
+  //  Impossible : le "server tag" (primary_guild) est réservé aux comptes
+  //  utilisateurs. Testé le 2026-09-02 via PATCH /users/@me : Discord accepte
+  //  la requête mais ignore primary_guild pour un compte bot.
+  //  On se contente de retirer l'ancien préfixe [PURG] du pseudo s'il traîne.
+  try {
+    const g = DISCORD_GUILD_ID ? await c.guilds.fetch(DISCORD_GUILD_ID).catch(() => null) : null;
+    if (g) {
+      const me = await g.members.fetchMe();
+      if (me.nickname && /^\[PURG\]\s*/i.test(me.nickname)) {
+        const clean = me.nickname.replace(/^\[PURG\]\s*/i, '').trim();
+        await me.setNickname(clean || null, 'Retrait préfixe PURG')
+          .then(() => console.log('✔  préfixe [PURG] retiré du pseudo du bot'))
+          .catch(e => console.warn('retrait préfixe KO :', e.message));
+      }
+    }
+  } catch (e) { console.warn('tag serveur :', e.message); }
+
   // --- auto-test : le bot peut-il écrire dans bot_config ? (sinon /auto-* ne mémorise rien) ---
   try {
     await db.from('bot_config').upsert({ key: '_selftest', value: { at: Date.now() }, updated_at: new Date().toISOString() });
@@ -719,6 +911,7 @@ client.once(Events.ClientReady, async (c) => {
   await startFeed();
   await startNews();
   await ensureRolePanel();
+  await ensureChatRules();
 
   // anti-triche : scan des ratios gains/mises toutes les 10 min
   clearInterval(jobs.acScan);
@@ -814,20 +1007,45 @@ client.on(Events.InteractionCreate, async (i) => {
     if (i.commandName === 'annonce') {
       await i.deferReply({ ephemeral: true });
       const salon = i.options.getChannel('salon');
-      const url = SITE_URL || 'https://evelatro.netlify.app/';
-      // message texte simple : Discord déploie tout seul le grand aperçu du site
-      const text = [
-        '🎰 **EveLatro! est en ligne** — mon petit casino perso, venez jouer !',
-        '',
-        'Blackjack, machines à sous, vidéo poker, roulette, mode VS entre potes, et des caisses à ouvrir. Zéro argent réel, juste pour le fun.',
-        '',
-        '**Ça me ferait super plaisir que vous l\'installiez** (PC, Android, ou direct dans le navigateur) 💛',
-        'Réagissez avec 🤍 si vous l\'avez fait !',
-        '',
-        url,
-      ].join('\n');
+
+      // 1er embed : l'annonce, en grand (grande image = og.png du site)
+      const annonce = new EmbedBuilder()
+        .setColor(PINK)
+        .setAuthor({ name: 'EveLatro!', iconURL: 'attachment://emilia.png' })
+        .setThumbnail('attachment://emilia.png')
+        .setTitle('🎰 EveLatro! est en ligne — venez jouer !')
+        .setURL(GAME_URL)
+        .setDescription([
+          'Mon petit casino perso : **Blackjack, machines à sous, vidéo poker, roulette**, mode **VS entre potes**, et des **caisses** à ouvrir.',
+          'Zéro argent réel, juste pour le fun. 200 crédits offerts, recharge auto quand on tombe à zéro.',
+          '',
+          `**Jouer / installer** → ${GAME_URL}`,
+          'Navigateur · Windows · Android — même code partout, solde synchronisé.',
+          '',
+          '**Ça me ferait super plaisir que vous l\'installiez** 💛 — réagissez avec 🤍 si c\'est fait !',
+        ].join('\n'))
+        .setImage('https://evelatro.pages.dev/og.png')
+        .setFooter({ text: 'Multijoueur Discord · classement · duels' });
+
+      // 2e embed : la mise en garde anti-triche
+      const antiCheat = new EmbedBuilder()
+        .setColor(RED)
+        .setTitle('⚠️ Anti-triche strict — à lire')
+        .setDescription([
+          'Il est possible (rare) de perdre sa progression **en étant honnête** : l\'anti-triche est très strict. Normalement il n\'y a **aucun risque** — si ça vous arrive, **prévenez-moi**.',
+          '',
+          'Et ça ne sert à rien de tricher puis de venir pleurer : j\'ai **toutes les stats et tout le passif**, le serveur détecte **la moindre anomalie**.',
+          '',
+          '**PS :** si un faux positif arrive, je peux vous **débannir dans la minute** et vous **récupérez tout**.',
+        ].join('\n'));
+
+      const att = emiliaAttachment();
       try {
-        const msg = await salon.send({ content: text, allowedMentions: { parse: [] } });
+        const msg = await salon.send({
+          embeds: [annonce, antiCheat],
+          files: att ? [att] : [],
+          allowedMentions: { parse: [] },
+        });
         await msg.react('🤍').catch(() => {});
         return void i.editReply(`Annonce postée dans ${salon}.`);
       } catch (e) {
@@ -853,18 +1071,62 @@ client.on(Events.InteractionCreate, async (i) => {
     }
     if (i.commandName === 'news') return void openNewsModal(i);
 
+    if (i.commandName === 'donner-skin') {
+      await i.deferReply({ ephemeral: true });
+      if (i.user.id !== '411114861276430337') return void i.editReply('Commande réservée.');
+      const target = i.options.getUser('joueur');
+      const skin = rollGiftSkin(i.options.getString('caisse'), i.options.getString('rarete'));
+      if (!skin) return void i.editReply('Caisse inconnue.');
+      const { data: prof } = await db.from('profiles').select('user_id,pseudo').eq('discord_id', target.id).maybeSingle();
+      if (!prof) return void i.editReply(`**${target.username}** n'est pas lié au jeu. Il doit se connecter à Discord dans EveLatro une fois, puis relance la commande.`);
+      const { error } = await db.from('cs_gifts').insert({ user_id: prof.user_id, discord_id: target.id, skin });
+      if (error) return void i.editReply('Erreur : ' + error.message + '\n(table `cs_gifts` créée ? relance `supabase-anticheat.sql`.)');
+      console.log(`DONNER-SKIN par ${i.user.tag} -> ${target.tag} : ${skin.weapon} | ${skin.name}`);
+      return void i.editReply(`🎁 **${skin.weapon} | ${skin.name}** — ${skin.rarity}${skin.stat ? ' · StatTrak™' : ''} · ${skin.wear} · ~${nf.format(skin.price)} cr.\nEnvoyé à ${target}. Il l'aura à sa prochaine ouverture du jeu (inventaire des caisses).`);
+    }
+
+    const HELP_PLAYER = [
+      '**/jouer** — jouer ici : Blackjack, Machines, Roulette, Vidéo Poker, Caisses',
+      '**/solde** — voir ton solde (le même que dans l\'app)',
+      '**/vestiaire** — acheter / changer la tenue des croupiers',
+      '**/leaderboard** — le classement en direct',
+      '**/help** — ce message',
+    ];
+    const HELP_ADMIN = [
+      '__Salons & annonces__',
+      '**/directe** — ce qui se passe en direct dans le jeu',
+      '**/auto-leaderboard on|off** — poster le classement toutes les 10 min (option `reset`)',
+      '**/auto-directe on|off** — un message auto-rafraîchi avec le flux en direct',
+      '**/feed on|off** — poster chaque action du jeu, en temps réel',
+      '**/news** — éditer le panneau « Quoi de neuf ? » du jeu',
+      '**/news-post** `salon:` — (re)poster ce panneau dans un salon',
+      '**/annonce** `salon:` — poster l\'annonce du site (+ réaction 🤍)',
+      '**/role-panel** `salon:` — (re)poster le panneau du rôle « eve weird shit »',
+      '**/emilia-tann** — annoncer le jeu Emiliaaa Tann (embed + lien avec aperçu)',
+      '**/tag-purg** — annoncer que le tag PURG est dispo (embed + **@everyone**)',
+      '',
+      '__Salon d\'aide__',
+      '**/warn** `membre:` `raison:` — +1 warn ; à 3 warns le membre passe en lecture seule (il peut juste lire)',
+      '**/unwarn** `membre:` — remet ses warns à zéro et lui rend la parole',
+      '',
+      '__Anti-triche & modération__',
+      '**/joueur-fiche** — voir les données d\'un joueur (`discord_id` ou `pseudo`)',
+      '**/purge-progression** — remet à zéro la progression d\'un joueur (irréversible, trace loggée)',
+      '**/triche-liste** — les comptes signalés par l\'anti-triche',
+      '**/triche-confirmer** — confirme une triche, reset le compte (`fiche`, `joueur` ou `discord_id`)',
+      '**/triche-annuler** — faux positif : restaure la progression depuis la fiche',
+      '**/donner-skin** — offrir un skin de caisse à un joueur _(réservé)_',
+      '**/help-admin** — la liste admin seule',
+    ];
+
     if (i.commandName === 'help') {
+      const isAdmin = i.memberPermissions && i.memberPermissions.has(ADMIN);
+      const lines = isAdmin
+        ? [...HELP_PLAYER, '', '━━━━━━━━━━  **Admin**  ━━━━━━━━━━', ...HELP_ADMIN]
+        : [...HELP_PLAYER, '', '_Les admins ont aussi_ `/help-admin`_._'];
       return void i.reply({ ephemeral: true, embeds: [new EmbedBuilder().setColor(0xFF3D7F)
         .setTitle('EveLatro! — commandes')
-        .setDescription([
-          '**/jouer** — jouer ici : Blackjack, Machines, Roulette, Vidéo Poker, Caisses',
-          '**/solde** — voir ton solde (le même que dans l\'app)',
-          '**/vestiaire** — acheter / changer la tenue des croupiers',
-          '**/leaderboard** — le classement en direct',
-          '**/help** — ce message',
-          '',
-          '_Les admins ont aussi_ `/help-admin`_._',
-        ].join('\n'))] });
+        .setDescription(lines.join('\n'))] });
     }
 
     if (i.commandName === 'help-admin') {
@@ -873,25 +1135,7 @@ client.on(Events.InteractionCreate, async (i) => {
       }
       return void i.reply({ ephemeral: true, embeds: [new EmbedBuilder().setColor(0xE2B458)
         .setTitle('EveLatro! — commandes admin')
-        .setDescription([
-          '**/directe** — ce qui se passe en direct dans le jeu',
-          '**/auto-leaderboard on|off** — poster le classement toutes les 10 min (option `reset`)',
-          '**/auto-directe on|off** — un message auto-rafraîchi avec le flux en direct',
-          '**/feed on|off** — poster chaque action du jeu, en temps réel',
-          '**/news** — éditer le panneau « Quoi de neuf ? » du jeu',
-          '**/news-post** — (re)poster ce panneau dans un salon',
-          '**/annonce** — poster l\'annonce du site (+ réaction 🤍)',
-          '**/role-panel** — (re)poster le panneau du rôle « eve weird shit »',
-          '',
-          '__Anti-triche & modération__',
-          '**/joueur-fiche** — voir les données d\'un joueur (`discord_id` ou `pseudo`)',
-          '**/purge-progression** — remet à zéro la progression d\'un joueur (irréversible, trace loggée)',
-          '**/triche-liste** — les comptes signalés par l\'anti-triche',
-          '**/triche-confirmer** — confirme une triche, reset le compte (`fiche`, `joueur` ou `discord_id`)',
-          '**/triche-annuler** — faux positif : restaure la progression depuis la fiche',
-          '',
-          '**/help-admin** — ce message',
-        ].join('\n'))] });
+        .setDescription(HELP_ADMIN.join('\n'))] });
     }
 
     if (i.commandName === 'triche-liste') {
@@ -947,25 +1191,35 @@ client.on(Events.InteractionCreate, async (i) => {
       const stamp = { status: null, resolved_at: new Date().toISOString(), resolved_by: i.user.tag };
 
       if (i.commandName === 'triche-confirmer') {
-        await db.from('wallet').update({ flagged: true, flag_reason: f.reason, flagged_at: stamp.resolved_at, credits: 0 }).eq('user_id', f.user_id);
+        await db.from('wallet').update({ flagged: true, flag_reason: f.reason, flagged_at: stamp.resolved_at, credits: 0, cs_inv: null, bonuses: {} }).eq('user_id', f.user_id);
         await db.from('user_skins').delete().eq('user_id', f.user_id);
         await db.from('scores').delete().eq('user_id', f.user_id);
         await db.from('cheat_flags').update({ ...stamp, status: 'confirmed' }).eq('user_id', f.user_id).eq('status', 'open');
         console.log(`TRICHE CONFIRMÉE fiche #${fidR} par ${i.user.tag} :`, JSON.stringify(f.snapshot));
-        return void i.editReply(`🔴 Fiche #${fidR} confirmée. **${f.pseudo || f.discord_id}** : progression remise à zéro. Le jeu se réinitialisera à sa prochaine ouverture. Le snapshot reste dans la fiche.`);
+        return void i.editReply(`🔴 Fiche #${fidR} confirmée. **${f.pseudo || f.discord_id}** : progression remise à zéro (crédits, skins croupier + caisses, bonus, classement). Le jeu se réinitialisera à sa prochaine ouverture. Le snapshot reste dans la fiche.`);
       }
 
       // triche-annuler : restaure depuis le snapshot
       const s = f.snapshot || {};
-      await db.from('wallet').update({ flagged: false, flag_reason: null, credits: Number.isFinite(s.credits) ? s.credits : 200 }).eq('user_id', f.user_id);
-      if (s.skins && (s.skins.owned || s.skins.worn)) {
-        await db.from('user_skins').upsert({ user_id: f.user_id, owned: s.skins.owned || {}, worn: s.skins.worn || {}, updated_at: stamp.resolved_at });
+      // solde à restaurer = celui d'AVANT l'action douteuse (jamais l'argent buggé)
+      const restoreBal = Number.isFinite(s.credits_before) ? s.credits_before
+        : Number.isFinite(s.credits) ? s.credits : 200;
+      const skRow = Array.isArray(s.skins) ? (s.skins[0] || null) : (s.skins || null);
+      await db.from('wallet').update({
+        flagged: false, flag_reason: null, credits: restoreBal,
+        cs_inv: s.cs_inv ?? null,
+        bonuses: s.bonuses ?? {},
+      }).eq('user_id', f.user_id);
+      if (skRow && (skRow.owned || skRow.worn)) {
+        await db.from('user_skins').upsert({ user_id: f.user_id, owned: skRow.owned || {}, worn: skRow.worn || {}, updated_at: stamp.resolved_at });
       }
       if (Number.isFinite(s.score)) {
-        await db.from('scores').upsert({ user_id: f.user_id, pseudo: f.pseudo || 'Joueur', best_score: s.score, updated_at: stamp.resolved_at });
+        await db.from('scores').upsert({ user_id: f.user_id, pseudo: f.pseudo || 'Joueur', best_score: Math.min(s.score, restoreBal), updated_at: stamp.resolved_at });
       }
       await db.from('cheat_flags').update({ ...stamp, status: 'cleared' }).eq('user_id', f.user_id).eq('status', 'open');
-      return void i.editReply(`🟢 Fiche #${fidR} annulée (faux positif). Progression de **${f.pseudo || f.discord_id}** restaurée : ${Number.isFinite(s.credits) ? nf.format(s.credits) : 200} cr., skins + record remis.`);
+      const nSkins = skRow && skRow.owned ? Object.values(skRow.owned).reduce((a, v) => a + (Array.isArray(v) ? v.length : 0), 0) : 0;
+      const nCase = Array.isArray(s.cs_inv) ? s.cs_inv.length : 0;
+      return void i.editReply(`🟢 Fiche #${fidR} annulée (faux positif). Progression de **${f.pseudo || f.discord_id}** restaurée : **${nf.format(restoreBal)} cr.** (solde d'avant l'incident)${Number.isFinite(s.credits_before) && s.credits_before !== s.credits ? ` — au lieu de ${nf.format(s.credits || 0)} cr. au moment du flag` : ''}, ${nSkins} skin(s) croupier, ${nCase} skin(s) de caisse, bonus + record remis.`);
     }
 
     if (i.commandName === 'joueur-fiche' || i.commandName === 'purge-progression') {
@@ -1017,6 +1271,65 @@ client.on(Events.InteractionCreate, async (i) => {
       return void i.editReply(cfg && cfg.message_id
         ? `Panneau posté dans <#${cfg.channel_id}>.`
         : 'Impossible de poster le panneau (voir les logs du bot).');
+    }
+
+    if (i.commandName === 'warn') {
+      await i.deferReply({ ephemeral: true });
+      const membre = i.options.getUser('membre');
+      const raison = i.options.getString('raison') || null;
+      const { n, muted, muteErr } = await addWarn(membre, raison);
+
+      // petit message public dans le salon d'aide
+      const chan = await fetchChannel(CHAT_RULES_CHANNEL);
+      if (chan) {
+        const line = n >= WARN_LIMIT
+          ? `⛔ <@${membre.id}> — **warn ${n}/${WARN_LIMIT}**. Tu ne peux plus écrire dans ce salon (lecture seule).`
+          : `⚠️ <@${membre.id}> — **warn ${n}/${WARN_LIMIT}**${raison ? ` (${raison})` : ''}. Répéter ou bavarder ici peut te couper la parole à ${WARN_LIMIT}.`;
+        await chan.send({ content: line, allowedMentions: { users: [membre.id] } }).catch(() => {});
+      }
+
+      if (n >= WARN_LIMIT && muteErr) {
+        return void i.editReply(`Warn ${n}/${WARN_LIMIT} enregistré pour ${membre}, mais je n'ai pas pu couper la parole : ${muteErr}\n(le bot a-t-il « Gérer les rôles » / « Gérer les permissions » sur le salon d'aide ?)`);
+      }
+      return void i.editReply(muted
+        ? `⛔ ${membre} est maintenant en **lecture seule** dans le salon d'aide (${n} warns). \`/unwarn\` pour annuler.`
+        : `⚠️ Warn **${n}/${WARN_LIMIT}** pour ${membre}.`);
+    }
+
+    if (i.commandName === 'unwarn') {
+      await i.deferReply({ ephemeral: true });
+      const membre = i.options.getUser('membre');
+      const err = await clearWarn(membre);
+      return void i.editReply(err
+        ? `Warns remis à zéro pour ${membre}, mais la parole n'a pas pu être rétablie : ${err}`
+        : `✅ ${membre} : warns remis à zéro, parole rendue dans le salon d'aide.`);
+    }
+
+    if (i.commandName === 'emilia-tann') {
+      const p = join(__dirname, 'emilia-tann.png');
+      const att = existsSync(p) ? new AttachmentBuilder(p, { name: 'emilia-tann.png' }) : null;
+      const emb = new EmbedBuilder()
+        .setColor(PINK)
+        .setTitle('Emiliaaa Tann---♡')
+        .setDescription('Nouveau jeu purement pornographique, amusez-vous bien ! (finalement je le met quand même)');
+      if (att) emb.setImage('attachment://emilia-tann.png');
+      await i.reply({ embeds: [emb], files: att ? [att] : [], allowedMentions: { parse: [] } });
+      // message séparé, SANS embed : Discord n'affiche l'aperçu du site que comme ça
+      await i.followUp({ content: 'https://emiliaaa-tann.netlify.app/', allowedMentions: { parse: [] } });
+      return;
+    }
+
+    if (i.commandName === 'tag-purg') {
+      const emb = new EmbedBuilder()
+        .setColor(PINK)
+        .setAuthor({ name: 'EveLatro!', iconURL: 'attachment://emilia.png' })
+        .setTitle('🏷️  Tag PURG')
+        .setDescription("Le tag **PURG(atoire)** est disponible, n'hésitez pas à l'ajouter sur votre profil.");
+      const att = emiliaAttachment();
+      await i.reply({ embeds: [emb], files: att ? [att] : [], allowedMentions: { parse: [] } });
+      // message séparé SANS embed : le vrai ping @everyone
+      await i.followUp({ content: '@everyone', allowedMentions: { parse: ['everyone'] } });
+      return;
     }
 
     // --- admin ---

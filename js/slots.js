@@ -31,27 +31,57 @@ Games.slots = {
 
     const screen = el('div', { class: 'slot-screen' });
     const banner = el('div', { class: 'banner' });
-    const spinBtn = el('button', { class: 'btn btn-primary', text: 'Lancer', onClick: spin });
-    const controls = el('div', { class: 'controls' }, spinBtn);
+    const spinBtn = el('button', { class: 'btn btn-primary btn-jouer', text: 'Jouer', onClick: spin });
     const paytableBox = el('div');
-    const betWrap = betBar(() => bet, v => { if (!busy) bet = v; }, { onChange: refreshBtn });
+    const betWrap = betBar(() => bet, v => { if (!busy) bet = v; }, { onChange: () => { refreshBtn(); syncReadouts(); } });
+
+    // console intégrée à la borne : Mise · JOUER · Solde
+    const miseOut = el('b', { class: 'sc-val' });
+    const soldeOut = el('b', { class: 'sc-val' });
+    const consoleEl = el('div', { class: 'slot-console' },
+      el('div', { class: 'sc-box' }, el('span', { class: 'sc-lbl', text: 'Mise' }), miseOut),
+      spinBtn,
+      el('div', { class: 'sc-box' }, el('span', { class: 'sc-lbl', text: 'Solde' }), soldeOut),
+    );
+    const marqueeName = el('div', { class: 'slot-marquee-name' });
+    const marquee = el('div', { class: 'slot-marquee' },
+      el('div', { class: 'slot-marquee-brand' },
+        el('span', { text: '7' }), el('span', { class: 'sm-seven', text: '7' }), el('span', { text: '7' })),
+      marqueeName);
+    const leverMount = el('div', { class: 'slot-lever-mount' });
+    const lever = el('div', { class: 'slot-lever' }, el('span', { class: 'slot-lever-knob' }));
+    const cabinet = el('div', { class: 'slot-cabinet' },
+      leverMount, lever,
+      marquee, screen, consoleEl,
+      el('div', { class: 'slot-tray' }),
+      el('div', { class: 'slot-base' },
+        el('div', { class: 'slot-base-door' }),
+        el('div', { class: 'slot-base-foot slot-base-foot--l' }),
+        el('div', { class: 'slot-base-foot slot-base-foot--r' })));
+
+    function syncReadouts() {
+      miseOut.textContent = bet + ' cr.';
+      try { soldeOut.textContent = Bank.balance() + ' cr.'; } catch (e) { /* rien */ }
+    }
+    try { Bank.onChange(syncReadouts); } catch (e) { /* rien */ }
 
     // --- Auto-reroll (bonus boutique) ---
-    let loopOn = true;              // le tour se relance-t-il tout seul ?
     const arRow = el('div', { class: 'ar-row' });
     const arBtn = el('button', { class: 'ar-btn', type: 'button' });
     const arTimer = el('span', { class: 'ar-timer' });
+    const arCount = el('span', { class: 'ar-count' });   // progression toujours visible
     const arTip = el('div', { class: 'ar-tip', hidden: true });
-    arRow.append(arBtn, arTimer, arTip);
+    arRow.append(arBtn, arTimer, arCount, arTip);
     arBtn.addEventListener('click', onArClick);
-    arBtn.addEventListener('mouseenter', () => { if (Bonus.arState() === 'locked') arTip.hidden = false; });
+    arBtn.addEventListener('mouseenter', () => { renderAR(); if (arTip.textContent) arTip.hidden = false; });
     arBtn.addEventListener('mouseleave', () => { arTip.hidden = true; });
 
-    body.append(subtabs, screen, banner, betWrap, controls, arRow, paytableBox);
+    body.append(subtabs, cabinet, banner, betWrap, arRow, paytableBox);
     const offBonus = Bonus.onChange(renderAR);
     const arTick = setInterval(renderAR, 1000);
     switchTo(0);
     renderAR();
+    syncReadouts();
 
     // mode combat "EveFight!" : la machine est imposée, on cache les onglets
     try {
@@ -77,59 +107,88 @@ Games.slots = {
     }
 
     function renderAR() {
-      if (!alive) return;
+      try { renderARInner(); } catch (e) { /* jamais casser la page des machines */ }
+    }
+    function renderARInner() {
+      if (!alive || !window.Bonus) return;
       const state = Bonus.arState();
-      if (state === 'not-owned') { arRow.hidden = true; return; }
+      if (state === 'not-owned') { arRow.hidden = true; arTip.hidden = true; arCount.hidden = true; return; }
       arRow.hidden = false;
       arBtn.className = 'ar-btn';
+      arBtn.removeAttribute('aria-disabled');
       arTimer.hidden = true;
+      arCount.hidden = true;
+      arTip.textContent = '';
+
+      const p = Bonus.arProgress();
+      const condTxt =
+        `Conditions pour relancer : blackjacks gagnés ${p.bj}/${p.need} · pokers ${p.poker}/${p.need} · `
+        + `roulettes gagnées (mise ≥ 500) ${p.roulette}/${p.need}. Puis ${fmtCr(Bonus.arRearmPrice())} cr.`;
 
       if (state === 'active') {
         arBtn.classList.add('is-on');
-        arBtn.disabled = false;
-        arBtn.textContent = loopOn ? '🔁 Auto-reroll : ON' : '⏸ Auto-reroll : pause';
+        arBtn.textContent = '⏸ Mettre en pause';
         arTimer.hidden = false;
         arTimer.textContent = fmtLeft(Bonus.arMsLeft());
-        if (loopOn && !busy && alive) maybeAutoSpin();
+        maybeAutoSpin();
+      } else if (state === 'paused') {
+        arBtn.classList.add('is-paused');
+        arBtn.textContent = '▶ Reprendre l\'auto-reroll';
+        arTimer.hidden = false;
+        arTimer.textContent = fmtLeft(Bonus.arMsLeft()) + ' (pause)';
+      } else if (state === 'free') {
+        arBtn.classList.add('is-ready');
+        arBtn.textContent = '▶ Lancer l\'auto-reroll (1re fois offerte)';
       } else if (state === 'ready') {
         arBtn.classList.add('is-ready');
-        arBtn.disabled = false;
-        arBtn.textContent = '🔁 Réarmer l\'auto-reroll';
+        arBtn.textContent = `▶ Relancer l'auto-reroll — ${fmtCr(Bonus.arRearmPrice())} cr`;
       } else { // locked
         arBtn.classList.add('is-locked');
-        arBtn.disabled = true;
-        arBtn.textContent = '🔁 Auto-reroll (verrouillé)';
-        const p = Bonus.arProgress();
-        arTip.textContent =
-          `Pour réarmer : blackjacks gagnés ${p.bj}/${p.need} · pokers ${p.poker}/${p.need} · `
-          + `roulettes gagnées ≥ 500 ${p.roulette}/${p.need}. Puis payer ${fmtCr(Bonus.arRearmPrice())} cr.`;
+        arBtn.setAttribute('aria-disabled', 'true');
+        arBtn.textContent = '🔁 Auto-reroll — verrouillé';
+        arCount.hidden = false;
+        arCount.textContent = `BJ ${p.bj}/${p.need} · PK ${p.poker}/${p.need} · RL ${p.roulette}/${p.need}`;
+        arTip.textContent = condTxt;
       }
     }
 
     function onArClick() {
       const state = Bonus.arState();
-      if (state === 'active') { loopOn = !loopOn; renderAR(); if (loopOn) maybeAutoSpin(); return; }
-      if (state !== 'ready') return;
-      openModal({
-        title: 'Auto-reroll',
-        build(box, close) {
-          box.append(el('p', { class: 'ar-modal-p', text:
-            `Réarmer l'auto-reroll pour ${fmtCr(Bonus.arRearmPrice())} cr ?` }));
-          box.append(el('div', { class: 'ar-modal-actions' },
-            el('button', { class: 'btn btn-primary', text: 'Confirmer', onClick: () => {
-              const r = Bonus.arRearm();
-              close();
-              if (!r.ok && r.reason === 'poor') banner.textContent = 'Pas assez de crédits.';
-            } }),
-            el('button', { class: 'btn btn-mini', text: 'Annuler', onClick: close }),
-          ));
-        },
-      });
+      if (state === 'locked') { renderAR(); arTip.hidden = false; return; }
+      if (state === 'ready') {
+        openModal({
+          title: 'Auto-reroll',
+          build(box, close) {
+            box.append(el('p', { class: 'ar-modal-p', text:
+              `Relancer l'auto-reroll pour ${fmtCr(Bonus.arRearmPrice())} cr ?` }));
+            box.append(el('div', { class: 'ar-modal-actions' },
+              el('button', { class: 'btn btn-primary', text: 'Confirmer', onClick: () => {
+                const r = Bonus.arPayAndStart();
+                close();
+                if (r.ok) kickLoop();
+                else if (r.reason === 'poor') banner.textContent = 'Pas assez de crédits.';
+              } }),
+              el('button', { class: 'btn btn-mini', text: 'Annuler', onClick: close }),
+            ));
+          },
+        });
+        return;
+      }
+      // 'active' -> pause · 'paused' -> reprise · 'free' -> démarre
+      const r = Bonus.arToggle();
+      renderAR();
+      if (r.ok && (r.started || r.resumed)) kickLoop();
     }
 
+    let autoPending = false;
+    function kickLoop() { autoPending = false; maybeAutoSpin(); }
     function maybeAutoSpin() {
-      if (!alive || busy || !loopOn || !Bonus.arActive()) return;
-      setTimeout(() => { if (alive && !busy && loopOn && Bonus.arActive()) spin(); }, 1000);
+      if (autoPending || !alive || busy || !Bonus.arActive()) return;
+      autoPending = true;
+      setTimeout(() => {
+        autoPending = false;
+        if (alive && !busy && Bonus.arActive()) spin();
+      }, 1100);
     }
 
     function switchTo(i) {
@@ -139,6 +198,8 @@ Games.slots = {
       clear(screen);
       clear(paytableBox);
       const m = MACHINES[i];
+      cabinet.dataset.machine = String(i);
+      marqueeName.textContent = m.name;
       m.mount(screen);
       paytableBox.append(m.paytable());
       banner.textContent = m.tagline;
@@ -148,7 +209,7 @@ Games.slots = {
 
     function refreshBtn() {
       spinBtn.disabled = busy;
-      spinBtn.textContent = busy ? '…' : 'Lancer';
+      spinBtn.textContent = busy ? '…' : 'Jouer';
     }
 
     function spin() {
@@ -157,9 +218,12 @@ Games.slots = {
       stake = Bank.stake(bet);
       if (!stake) return;
       busy = true;
+      cabinet.classList.add('is-pulled');
+      setTimeout(() => cabinet.classList.remove('is-pulled'), 480);
       refreshBtn();
-      banner.textContent = '';
-      banner.className = 'banner';
+      // on NE vide PAS la bannière ici -> pas de saut de mise en page pendant le tour
+      banner.textContent = 'Ça tourne…';
+      banner.className = 'banner banner-push';
       const m = MACHINES[current];
       if (m.sound) { try { m.sound(); } catch (e) { /* pas de son */ } }
       const result = m.roll();
@@ -188,7 +252,7 @@ Games.slots = {
       refreshBtn();
 
       // Bonus "auto-reroll" : la machine relance toute seule avec la mise.
-      if (alive && window.Bonus && Bonus.arActive() && loopOn) maybeAutoSpin();
+      if (alive && window.Bonus && Bonus.arActive()) maybeAutoSpin();
       renderAR();
     }
   },
@@ -246,11 +310,11 @@ function makeSlot(spec) {
 function machineClassique() {
   const S = [
     { g: '🍒', weight: 24, three: 5 },
-    { g: '🍋', weight: 20, three: 8 },
-    { g: '🔔', weight: 14, three: 12 },
+    { g: '🔔', weight: 20, three: 8 },
+    { g: '🍇', weight: 14, three: 12 },
     { g: '⭐', weight: 9, three: 20 },
-    { g: '7️⃣', weight: 5, three: 40 },
-    { g: '💎', weight: 3, three: 100 },
+    { g: '💎', weight: 5, three: 40 },
+    { g: '7', seven: true, weight: 3, three: 100 },
   ];
   const self = makeSlot({
     name: 'Classique',
@@ -259,23 +323,51 @@ function machineClassique() {
     special: S[0],
     sound: () => Sound.slotClassic(),
     mount(container) {
-      self._reels = [0, 1, 2].map(() => el('div', { class: 'reel' }));
-      const box = el('div', { class: 'reels m-classic' }, ...self._reels);
+      self._reels = [0, 1, 2].map(() => {
+        const strip = el('div', { class: 'fr-strip' });
+        const win = el('div', { class: 'fr-reel' }, strip);
+        return { strip, win };
+      });
+      const box = el('div', { class: 'reels m-classic fruit-box' },
+        ...self._reels.map(r => r.win));
       container.append(box);
-      self._reels.forEach((r, i) => { r.textContent = S[i].g; });
+      self._reels.forEach(r => {
+        buildFruitStrip(r.strip, [self.pick(), self.pick(), self.pick()]);
+        r.strip.style.transform = 'translateY(0)';
+      });
     },
     animateTo(result, done) {
-      let ticks = 0;
-      const timer = setInterval(() => {
-        self._reels.forEach(r => { r.textContent = self.pick().g; });
-        if (++ticks >= 16) {
-          clearInterval(timer);
-          self._reels.forEach((r, i) => { r.textContent = result[i].g; });
-          done();
-        }
-      }, 55);
+      self._reels.forEach((r, i) => {
+        const n = 20 + i * 7;
+        const cells = [];
+        for (let k = 0; k < n; k++) cells.push(self.pick());
+        cells.push(self.pick());     // rangée du haut
+        cells.push(result[i]);       // rangée du milieu = ligne de gain
+        cells.push(self.pick());     // rangée du bas
+        buildFruitStrip(r.strip, cells);
+        // hauteur de mise en page d'une case (offsetHeight ignore les transform: scale)
+        const FCELL = r.strip.children[0].offsetHeight;
+        const dist = (cells.length - 3) * FCELL;
+        r.strip.style.transform = 'translateY(0)';
+        const anim = r.strip.animate(
+          [{ transform: 'translateY(0)' }, { transform: `translateY(-${dist}px)` }],
+          { duration: 1200 + i * 420, easing: 'cubic-bezier(.15,.72,.18,1)' });
+        anim.onfinish = () => {
+          r.strip.style.transform = `translateY(-${dist}px)`;
+          if (i === self._reels.length - 1) done();
+        };
+      });
     },
   });
+
+  function buildFruitStrip(strip, cells) {
+    clear(strip);
+    cells.forEach(sym => strip.append(el('div', {
+      class: 'fr-cell' + (sym.seven ? ' fr-seven' : ''),
+      text: sym.g,
+    })));
+  }
+
   return self;
 }
 
@@ -285,14 +377,13 @@ function machineClassique() {
    ----------------------------------------------------------- */
 function machineNeon() {
   const S = [
-    { g: '⚡', weight: 24, three: 5 },
-    { g: '🔷', weight: 20, three: 8 },
-    { g: '🌙', weight: 14, three: 12 },
-    { g: '🛸', weight: 9, three: 20 },
-    { g: '🎯', weight: 5, three: 40 },
-    { g: '👾', weight: 3, three: 120 },
+    { g: '⚡', weight: 24, three: 5, tone: 'volt' },
+    { g: '🔷', weight: 20, three: 8, tone: 'ice' },
+    { g: '🌙', weight: 14, three: 12, tone: 'ice', big: true },
+    { g: '🛸', weight: 9, three: 20, tone: 'volt', big: true },
+    { g: '🎯', weight: 5, three: 40, tone: 'volt', big: true },
+    { g: '👾', weight: 3, three: 120, tone: 'ufo', jackpot: true },
   ];
-  const CELL = 62;
   const self = makeSlot({
     name: 'Néon',
     tagline: 'Arcade de nuit. Le 👾 vaut le gros lot.',
@@ -317,9 +408,13 @@ function machineNeon() {
         const cells = [];
         const n = 22 + i * 6;
         for (let k = 0; k < n; k++) cells.push(self.pick());
-        cells.push(result[i]);                 // le symbole final est tout en bas
+        cells.push(self.pick());   // rangée du haut
+        cells.push(result[i]);     // rangée du milieu = ligne de gain
+        cells.push(self.pick());   // rangée du bas
         buildStrip(s.strip, cells);
-        const dist = (cells.length - 1) * CELL;
+        // offsetHeight ignore les transform: scale des .ncell-big / .ncell-jackpot
+        const CELL = s.strip.children[0].offsetHeight;
+        const dist = (cells.length - 3) * CELL;
         s.strip.style.transform = 'translateY(0)';
         const anim = s.strip.animate(
           [{ transform: 'translateY(0)' }, { transform: `translateY(-${dist}px)` }],
@@ -334,7 +429,11 @@ function machineNeon() {
 
   function buildStrip(strip, cells) {
     clear(strip);
-    cells.forEach(sym => strip.append(el('div', { class: 'ncell', text: sym.g })));
+    cells.forEach(sym => strip.append(el('div', {
+      class: 'ncell ncell-' + (sym.tone || 'volt')
+        + (sym.jackpot ? ' ncell-jackpot' : sym.big ? ' ncell-big' : ''),
+      text: sym.g,
+    })));
   }
 
   return self;
@@ -348,10 +447,10 @@ function machineDeluxe() {
   const S = [
     { g: '🍀', weight: 24, three: 5 },
     { g: '🔔', weight: 20, three: 8 },
-    { g: '⭐', weight: 14, three: 14 },
-    { g: '💰', weight: 9, three: 25 },
-    { g: '💎', weight: 5, three: 60 },
-    { g: '👑', weight: 3, three: 150 },
+    { g: '⭐', weight: 14, three: 14, shine: true },
+    { g: '💰', weight: 9, three: 25, shine: true },
+    { g: '💎', weight: 5, three: 60, shine: true },
+    { g: '👑', weight: 3, three: 150, jackpot: true },
   ];
   const self = makeSlot({
     name: 'Deluxe 3D',
@@ -377,18 +476,19 @@ function machineDeluxe() {
    et s'effacent en haut/bas (arrière) -> impression de relief. */
 function createDrums(canvas, symbols) {
   const ctx = canvas.getContext('2d');
-  const W = 320, H = 150;
-  const dpr = window.devicePixelRatio || 1;
+  // le canvas est dimensionné par le CSS (même hauteur que classique/néon)
+  const W = Math.max(240, Math.round(canvas.clientWidth || 372));
+  const H = Math.max(120, Math.round(canvas.clientHeight || 176));
+  const SC = H / 176;                           // échelle des tailles fixes
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = W * dpr;
   canvas.height = H * dpr;
-  canvas.style.width = W + 'px';
-  canvas.style.height = H + 'px';
   ctx.scale(dpr, dpr);
 
   const K = symbols.length * 2;                 // positions autour du tambour
   const wheel = [...symbols, ...symbols];       // (chaque symbole deux fois)
   const STEP = (Math.PI * 2) / K;
-  const reelW = 92;
+  const reelW = Math.min(H * 0.62, (W - 24) / 3.4);
   const gap = (W - reelW * 3) / 4;
   const centers = [0, 1, 2].map(i => gap + reelW / 2 + i * (reelW + gap));
   const cy = H / 2;
@@ -449,11 +549,11 @@ function createDrums(canvas, symbols) {
       grad.addColorStop(0, '#1c150a');
       grad.addColorStop(0.5, '#3a2f16');
       grad.addColorStop(1, '#1c150a');
-      roundRect(cx - reelW / 2, 6, reelW, H - 12, 10);
+      roundRect(cx - reelW / 2, 6 * SC, reelW, H - 12 * SC, 10 * SC);
       ctx.fillStyle = grad;
       ctx.fill();
       ctx.strokeStyle = '#c9a24b';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 * SC;
       ctx.stroke();
 
       // symboles autour du cylindre, de l'arrière vers l'avant
@@ -464,32 +564,40 @@ function createDrums(canvas, symbols) {
         const front = Math.cos(a);
         if (front <= 0.04) continue;                   // face cachée
         const y = cy - R * Math.sin(a);
+        const sym = wheel[j];
         ctx.save();
         ctx.globalAlpha = Math.min(1, front * 1.2);
-        ctx.font = `${Math.round(10 + 24 * front)}px "Segoe UI Emoji", sans-serif`;
+        // halo doré : discret pour tous, franc pour la couronne
+        if (front > 0.42) {
+          ctx.shadowColor = sym.jackpot
+            ? `rgba(255,224,140,${0.95 * front})`
+            : sym.shine ? `rgba(255,238,196,${0.55 * front})` : 'rgba(0,0,0,0)';
+          ctx.shadowBlur = (sym.jackpot ? 24 : sym.shine ? 12 : 0) * front * SC;
+        }
+        ctx.font = `${Math.round((10 + 24 * front) * SC)}px "Segoe UI Emoji", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(wheel[j].g, cx, y);
+        ctx.fillText(sym.g, cx, y);
         ctx.restore();
       }
 
       // ombres haut / bas pour "arrondir" le cylindre
-      const shade = ctx.createLinearGradient(0, 6, 0, H - 6);
+      const shade = ctx.createLinearGradient(0, 6 * SC, 0, H - 6 * SC);
       shade.addColorStop(0, 'rgba(0,0,0,0.75)');
       shade.addColorStop(0.28, 'rgba(0,0,0,0)');
       shade.addColorStop(0.72, 'rgba(0,0,0,0)');
       shade.addColorStop(1, 'rgba(0,0,0,0.75)');
-      roundRect(cx - reelW / 2, 6, reelW, H - 12, 10);
+      roundRect(cx - reelW / 2, 6 * SC, reelW, H - 12 * SC, 10 * SC);
       ctx.fillStyle = shade;
       ctx.fill();
     });
 
     // ligne de gain au centre
     ctx.strokeStyle = 'rgba(226,180,88,0.6)';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5 * SC;
     ctx.beginPath();
-    ctx.moveTo(6, cy);
-    ctx.lineTo(W - 6, cy);
+    ctx.moveTo(6 * SC, cy);
+    ctx.lineTo(W - 6 * SC, cy);
     ctx.stroke();
   }
 

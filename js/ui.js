@@ -61,13 +61,12 @@ function gameShell(root, title, subtitle) {
  * au solde complet. Les jeux l'appellent avant chaque manche.
  */
 function betBar(get, set, opts = {}) {
-  const steps = opts.steps || [5, 10, 25, 50, 100];
   const bar = el('div', { class: 'betbar' });
   const row1 = el('div', { class: 'betbar-row betbar-row-main' });
-  const rowAdd = el('div', { class: 'betbar-row' });
   const row2 = el('div', { class: 'betbar-row token-rack' });
   const value = el('span', { class: 'betbar-value' });
   let autoMax = false;
+  let invert = false;                 // quand actif, les jetons RETIRENT au lieu d'ajouter
 
   function refresh() { value.textContent = get() + ' cr.'; }
   function pulse() {
@@ -75,10 +74,6 @@ function betBar(get, set, opts = {}) {
       [{ transform: 'scale(1)' }, { transform: 'scale(1.22)' }, { transform: 'scale(1)' }],
       { duration: 220, easing: 'ease-out' });
   }
-
-  // fromAuto = true quand le changement vient du mode auto (on ne le désactive pas).
-  // La mise ne peut JAMAIS dépasser le solde : cliquer 10 fois sur un jeton
-  // ne fait pas grimper le compteur au-delà de ce qu'on possède.
   function change(v, fromAuto) {
     const cap = Math.max(1, Bank.balance());
     set(Math.max(1, Math.min(Math.round(v), cap)));
@@ -87,9 +82,21 @@ function betBar(get, set, opts = {}) {
     if (opts.onChange) opts.onChange(get());
   }
 
+  const resetBtn = el('button', {
+    class: 'chip chip-step chip-reset', text: '↺', title: 'Remettre la mise à 1',
+    onClick: () => { change(1); pulse(); },
+  });
+  const invBtn = el('button', {
+    class: 'chip chip-step chip-invert', title: 'Inverser : les jetons retirent au lieu d\'ajouter',
+  });
+  invBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5L3 14.5a2 2 0 0 1 0-2.8l8-8a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L14 20"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+  invBtn.addEventListener('click', () => {
+    invert = !invert;
+    invBtn.classList.toggle('is-on', invert);
+    bar.classList.toggle('is-inverted', invert);
+  });
   const autoBtn = el('button', {
-    class: 'chip chip-step chip-auto',
-    text: '▲',
+    class: 'chip chip-step chip-auto', text: '▲',
     title: 'Toujours miser le maximum à chaque tour',
     onClick: () => {
       autoMax = !autoMax;
@@ -99,17 +106,13 @@ function betBar(get, set, opts = {}) {
     },
   });
 
-  // Rangée 1 : Mise + les contrôles principaux (Max et ▲ restent ici, pas à la ligne).
+  // Rangée 1 : Mise + reset + inverser + Max + auto.
   row1.append(el('span', { class: 'betbar-label', text: 'Mise' }), value);
-  row1.append(el('button', { class: 'chip chip-step', text: '−1', onClick: () => change(get() - 1) }));
-  row1.append(el('button', { class: 'chip chip-step', text: '+1', onClick: () => change(get() + 1) }));
+  row1.append(resetBtn, invBtn);
   row1.append(el('button', { class: 'chip chip-step', text: 'Max', onClick: () => change(Bank.balance()) }));
   row1.append(autoBtn);
 
-  // Rangée "+" : ajouts rapides cumulables.
-  steps.forEach(s => rowAdd.append(el('button', { class: 'chip', text: '+' + s, onClick: () => change(get() + s) })));
-
-  // Rangée 2 : les jetons de casino. Un clic AJOUTE la valeur à la mise.
+  // Rangée 2 : les jetons. Un clic AJOUTE (ou RETIRE si "inverser" est actif).
   const TOKENS = [
     { v: 1, bg: '#e9edf0', fg: '#12191d' },
     { v: 5, bg: '#d84a4a', fg: '#ffffff' },
@@ -119,14 +122,18 @@ function betBar(get, set, opts = {}) {
     { v: 1000, label: '1k', bg: '#e2b458', fg: '#04140f' },
     { v: 5000, label: '5k', bg: '#e0742f', fg: '#ffffff' },
     { v: 10000, label: '10k', bg: '#1c2129', fg: '#f5c451' },
+    { v: 50000, label: '50k', bg: '#1d7a4e', fg: '#eafff4' },
+    { v: 100000, label: '100k', bg: '#12324a', fg: '#a9d8ff' },
+    { v: 1000000, label: '1M', bg: '#5a1f8c', fg: '#f0d9ff' },
   ];
   TOKENS.forEach(tok => {
-    const token = el('button', { class: 'token', text: tok.label || tok.v, title: `Ajouter ${tok.v} à la mise` });
+    const token = el('button', { class: 'token', text: tok.label || tok.v });
     token.style.background = tok.bg;
     token.style.color = tok.fg;
+    token.title = `${tok.v} à la mise`;
     token.addEventListener('click', () => {
       const before = get();
-      change(before + tok.v);
+      change(before + (invert ? -tok.v : tok.v));
       if (get() !== before) { pulse(); flyToken(token, value, tok.bg); }
       Sound.chip();
       token.animate(
@@ -135,14 +142,8 @@ function betBar(get, set, opts = {}) {
     });
     row2.append(token);
   });
-  row2.append(el('button', {
-    class: 'token token-clear', text: '↺', title: 'Remettre la mise à 1',
-    onClick: () => { change(1); pulse(); },
-  }));
 
-  bar.append(row1, rowAdd, row2);
-  // Appelé par les jeux entre deux manches : applique le mode auto
-  // ou, à défaut, replafonne la mise au solde disponible.
+  bar.append(row1, row2);
   bar.syncAuto = () => {
     if (autoMax) change(Bank.balance(), true);
     else if (get() > Bank.balance()) change(Bank.balance(), true);
@@ -308,6 +309,15 @@ const Toast = (() => {
     ), { hold: 20000, onClick: () => { try { EveLatro.openMulti('vs'); } catch (e) {} } });
   }
 
-  return { friend, challenge };
+  function info(text, opts) {
+    push(el('div', {},
+      el('span', { class: 'toast-dot flat' }),
+      el('div', { class: 'toast-body' },
+        el('div', { class: 'toast-line' }, el('b', { text: String(text || '') })),
+      ),
+    ), opts || { hold: 6000 });
+  }
+
+  return { friend, challenge, info };
 })();
 window.Toast = Toast;

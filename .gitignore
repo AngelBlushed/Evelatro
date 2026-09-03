@@ -3,6 +3,10 @@ dist/
 build/
 .app-data/
 
+# Sources hors-jeu (images CS:GO brutes, notes perso) — pas dans le dépôt
+/IMAGE CS GO/
+/autre made by eve not claude/
+
 # Version .exe (générée par npm run build)
 /EveLatro/
 /EveLatro.exe

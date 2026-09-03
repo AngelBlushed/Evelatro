@@ -36,6 +36,10 @@ const WalletLedger = (() => {
     if (!st) return;
     if (st.flagged) { nuke(st.flagReason); return; }
     if (Number.isFinite(st.credits)) Bank.setCredits(st.credits);
+    // filet : après une restauration (/triche-annuler), le serveur renvoie
+    // l'inventaire de caisses + les bonus de la fiche -> on les remet en local.
+    try { if (st.csInv && window.Cases && Cases.hydrate) Cases.hydrate(st.csInv); } catch (e) {}
+    try { if (st.bonuses && window.Bonus && Bonus.hydrate) Bonus.hydrate(st.bonuses); } catch (e) {}
   }
 
   async function flush() {

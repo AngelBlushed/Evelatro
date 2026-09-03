@@ -80,6 +80,8 @@ const Bank = (() => {
     START,
 
     balance() { return inFight() ? 1e9 : credits; },
+    /** Vrai solde, même pendant un duel (balance() renvoie 1e9 en combat). */
+    realBalance() { return credits; },
     currentPeak() { return runPeak; },
     inFight,
     scores() { return scores.slice(); },
@@ -122,6 +124,21 @@ const Bank = (() => {
       if (inFight()) return;                 // gains virtuels pendant le duel
       const gain = Math.round(amount);
       if (gain > 0) { credits += gain; logMove(gain, 'win'); announce(); }
+    },
+
+    /** Règlement d'un DUEL VS gagné : gain réel, journalisé en 'duel' (pas
+        soumis au ratio mise/gain des jeux). À n'appeler qu'au règlement. */
+    duelWin(amount) {
+      if (inFight()) return;
+      const g = Math.round(amount || 0);
+      if (g > 0) { credits += g; logMove(g, 'duel'); announce(); }
+    },
+    /** Règlement d'un DUEL VS perdu. Renvoie le montant réellement retiré. */
+    duelLoss(amount) {
+      if (inFight()) return 0;
+      const l = Math.min(credits, Math.max(0, Math.round(amount || 0)));
+      if (l > 0) { credits -= l; logMove(-l, 'duel'); announce(); }
+      return l;
     },
 
     /**

@@ -463,7 +463,7 @@ function renderVsPanel(container) {
       box.append(
         el('div', { class: 'mp-info' }, el('b', { text: s.other + ' te défie !' }),
           el('p', { text: s.gameName + ' · ' + s.roundsTarget + ' manches · 20 s par manche.' }),
-          el('p', { text: 'Mise : ' + s.pct + '% de ton solde (' + Math.floor(s.pct / 100 * Bank.balance()) + ' cr.).' })),
+          el('p', { text: 'Mise : ' + s.pct + '% de ton solde (' + Math.floor(s.pct / 100 * (Bank.realBalance ? Bank.realBalance() : Bank.balance())) + ' cr.).' })),
         el('div', { class: 'controls' },
           el('button', { class: 'btn btn-primary', text: 'Relever le défi', onClick: () => Duel.accept() }),
           el('button', { class: 'btn', text: 'Décliner', onClick: () => Duel.decline() }),
