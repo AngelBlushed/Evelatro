@@ -346,13 +346,35 @@ async function startFeed() {
 
 const isDirectImage = u => typeof u === 'string' && /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(u.trim());
 
+/* Découpe un texte en champs d'embed (Discord = 1024 car. max par champ).
+   Coupe aux sauts de ligne. Le 1er champ garde le titre, les suivants un
+   titre invisible -> on obtient plusieurs "cases noires" à la suite. */
+function addLongField(emb, name, text, max = 1010) {
+  const s = String(text || '').trim();
+  if (!s) return;
+  const chunks = [];
+  let cur = '';
+  for (const ln of s.split('\n')) {
+    if (ln.length > max) {                       // ligne unique trop longue
+      if (cur) { chunks.push(cur); cur = ''; }
+      for (let i = 0; i < ln.length; i += max) chunks.push(ln.slice(i, i + max));
+      continue;
+    }
+    if (cur && (cur.length + 1 + ln.length) > max) { chunks.push(cur); cur = ln; }
+    else cur = cur ? cur + '\n' + ln : ln;
+  }
+  if (cur) chunks.push(cur);
+  chunks.forEach((c, idx) =>
+    emb.addFields({ name: idx === 0 ? name : '​', value: c || '​' }));
+}
+
 function newsEmbed(n) {
   const emb = new EmbedBuilder().setColor(GOLD)
     .setAuthor({ name: 'EveLatro! — Quoi de neuf ?', iconURL: 'attachment://emilia.png' })
     .setTitle(n.title || 'Quoi de neuf ?')
     .setTimestamp(n.updated_at ? new Date(n.updated_at) : new Date());
-  if (n.patch) emb.addFields({ name: '✨ Nouveautés', value: String(n.patch).slice(0, 1000) });
-  if (n.coming) emb.addFields({ name: '🔜 Bientôt', value: String(n.coming).slice(0, 1000) });
+  addLongField(emb, '✨ Nouveautés', n.patch);
+  addLongField(emb, '🔜 Bientôt', n.coming);
   const img = Array.isArray(n.images) ? n.images.find(isDirectImage) : null;
   if (img) emb.setImage(img.trim());
   else if (Array.isArray(n.images) && n.images[0]) {
