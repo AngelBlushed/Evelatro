@@ -71,7 +71,7 @@ if (doStep('build')) {
     ]);
     env.ANDROID_HOME = env.ANDROID_HOME || (process.env.LOCALAPPDATA ? process.env.LOCALAPPDATA + '\\Android\\Sdk' : '');
     sh('npx cap sync android', { env });
-    sh(process.platform === 'win32' ? 'gradlew.bat assembleDebug' : './gradlew assembleDebug',
+    sh(process.platform === 'win32' ? '.\\gradlew.bat assembleDebug' : './gradlew assembleDebug',
        { cwd: path.join(ROOT, 'android'), env });
     fs.copyFileSync(APK_SRC, APK);
     console.log('APK -> ' + APK);
@@ -84,7 +84,9 @@ if (doStep('build')) {
 
   // copies pratiques à la racine + dans site/
   cp(EXE, path.join(ROOT, 'EveLatro.exe'));
-  if (fs.existsSync(APK)) { cp(APK, path.join(ROOT, 'EveLatro.apk')); cp(APK, path.join(ROOT, 'site', 'EveLatro.apk')); }
+  // NB : pas de copie dans site/ — l'APK dépasse la limite 25 Mio de Cloudflare
+  //      Pages. Le bouton « Android » du site pointe sur la release GitHub.
+  if (fs.existsSync(APK)) cp(APK, path.join(ROOT, 'EveLatro.apk'));
 }
 
 /* ---------- 2. GITHUB RELEASE ---------- */
