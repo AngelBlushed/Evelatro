@@ -45,12 +45,12 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-/* Petit serveur "je suis vivant" : certaines plateformes (Railway en mode
-   "web service") tuent le conteneur si rien n'écoute sur un port. Inoffensif
-   ailleurs. */
-if (process.env.PORT) {
+/* Petit serveur "je suis vivant" : les hébergeurs (Railway, Koyeb, Fly…) tuent
+   le conteneur si rien n'écoute sur le port du health-check. Inoffensif ailleurs. */
+{
+  const port = process.env.PORT || 8000;
   http.createServer((req, res) => { res.writeHead(200); res.end('EveLatro bot OK'); })
-    .listen(process.env.PORT, () => console.log('health server :' + process.env.PORT));
+    .listen(port, () => console.log('health server :' + port));
 }
 import {
   Client, GatewayIntentBits, Partials, EmbedBuilder, AttachmentBuilder, Events, ActivityType,
@@ -702,6 +702,13 @@ const COMMANDS = [
     .addStringOption(o => o.setName('discord_id').setDescription('ID Discord du joueur'))
     .addStringOption(o => o.setName('pseudo').setDescription('...ou son pseudo in-game (approximatif)')),
 
+  new SlashCommandBuilder().setName('crediter')
+    .setDescription('Ajouter ou retirer des crédits EveLatro à un joueur')
+    .setDefaultMemberPermissions(ADMIN)
+    .addIntegerOption(o => o.setName('montant').setDescription('Combien de crédits (nombre négatif = retirer)').setRequired(true))
+    .addStringOption(o => o.setName('discord_id').setDescription('ID Discord du joueur (par défaut : toi)'))
+    .addBooleanOption(o => o.setName('remplacer').setDescription('Mettre le solde EXACTEMENT à ce montant (au lieu d\'ajouter)')),
+
   new SlashCommandBuilder().setName('triche-liste')
     .setDescription('Les comptes signalés par l\'anti-triche (ouverts)')
     .setDefaultMemberPermissions(ADMIN),
@@ -1132,6 +1139,7 @@ client.on(Events.InteractionCreate, async (i) => {
       '**/unwarn** `membre:` — remet ses warns à zéro et lui rend la parole',
       '',
       '__Anti-triche & modération__',
+      '**/crediter** `montant:` `discord_id:` `remplacer:` — ajouter/retirer des crédits (ou fixer le solde)',
       '**/joueur-fiche** — voir les données d\'un joueur (`discord_id` ou `pseudo`)',
       '**/purge-progression** — remet à zéro la progression d\'un joueur (irréversible, trace loggée)',
       '**/triche-liste** — les comptes signalés par l\'anti-triche',
@@ -1242,6 +1250,44 @@ client.on(Events.InteractionCreate, async (i) => {
       const nSkins = skRow && skRow.owned ? Object.values(skRow.owned).reduce((a, v) => a + (Array.isArray(v) ? v.length : 0), 0) : 0;
       const nCase = Array.isArray(s.cs_inv) ? s.cs_inv.length : 0;
       return void i.editReply(`🟢 Fiche #${fidR} annulée (faux positif). Progression de **${f.pseudo || f.discord_id}** restaurée : **${nf.format(restoreBal)} cr.** (solde d'avant l'incident)${Number.isFinite(s.credits_before) && s.credits_before !== s.credits ? ` — au lieu de ${nf.format(s.credits || 0)} cr. au moment du flag` : ''}, ${nSkins} skin(s) croupier, ${nCase} skin(s) de caisse, bonus + record remis.`);
+    }
+
+    if (i.commandName === 'crediter') {
+      await i.deferReply({ ephemeral: true });
+      const montant = i.options.getInteger('montant');
+      const discordId = (i.options.getString('discord_id') || i.user.id).trim();
+      const remplacer = i.options.getBoolean('remplacer') || false;
+
+      const found = await findProfile({ discordId });
+      if (!found || !found.prof) {
+        const list = await linkedList();
+        const lines = list.length
+          ? list.map(p => `• ${p.pseudo || '—'} — \`${p.discord_id}\``).join('\n')
+          : '_(aucun profil lié)_';
+        return void i.editReply(`Aucun compte lié à l'ID \`${discordId}\` : le joueur doit ouvrir EveLatro et se connecter à Discord dedans au moins une fois.\n\n**Comptes liés (20 plus récents) :**\n${lines}`);
+      }
+      const uid = found.prof.user_id;
+      const avant = await shared.balOf(uid);
+      const apres = Math.max(0, remplacer ? montant : avant + montant);
+      await shared.setBal(uid, apres);
+
+      // trace dans le journal anti-triche (cohérence ; sans effet sur les contrôles)
+      try {
+        const { data: last } = await db.from('wallet_ledger')
+          .select('seq').eq('user_id', uid).order('seq', { ascending: false }).limit(1).maybeSingle();
+        await db.from('wallet_ledger').insert({
+          user_id: uid, seq: (Number(last && last.seq) || 0) + 1,
+          delta: apres - avant, reason: 'adjust', game: null, balance_after: apres,
+        });
+      } catch (e) { console.warn('crediter: journal', e.message); }
+
+      console.log(`CREDITER ${new Date().toISOString()} par ${i.user.username} : ${discordId} (${uid}) ${avant} -> ${apres}`);
+      const diff = apres - avant;
+      return void i.editReply(
+        `✅ Solde de **${found.prof.pseudo || discordId}** : ${nf.format(avant)} → **${nf.format(apres)} cr.** `
+        + `(${diff >= 0 ? '+' : ''}${nf.format(diff)}).\n`
+        + `_Se met à jour dans le jeu au prochain contrôle serveur (quelques secondes s'il est connecté), ou au prochain lancement._`,
+      );
     }
 
     if (i.commandName === 'joueur-fiche' || i.commandName === 'purge-progression') {
