@@ -1,0 +1,27 @@
+# Blueprint Render pour le bot Discord EveLatro.
+# Sur render.com : "Add new" > "Blueprint" > choisir le depot Evelatro.
+# Les deux secrets (sync: false) restent a saisir a la main dans le dashboard.
+services:
+  - type: web
+    name: evelatro-bot
+    runtime: docker
+    repo: https://github.com/AngelBlushed/Evelatro
+    branch: main
+    rootDir: bot
+    dockerfilePath: ./Dockerfile
+    region: frankfurt
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        value: https://ayptnkxkzvntijgzcatx.supabase.co
+      - key: DISCORD_GUILD_ID
+        value: "1499380246674407586"
+      - key: SITE_URL
+        value: https://evelatro.pages.dev/
+      - key: SET_AVATAR
+        value: "0"
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
