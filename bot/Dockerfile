@@ -1,6 +1,7 @@
-# Image de déploiement du bot Discord EveLatro (Koyeb / Fly / n'importe quel hébergeur Docker).
-# node:20-slim (Debian) : sharp installe ses binaires prébuilts sans souci.
-FROM node:20-slim
+# Image de déploiement du bot Discord EveLatro (Render / n'importe quel hébergeur Docker).
+# node:22-slim (Debian) : sharp installe ses binaires prébuilts sans souci, et
+# @supabase/supabase-js exige Node 22+ (WebSocket natif pour realtime-js).
+FROM node:22-slim
 
 WORKDIR /app
 
@@ -12,7 +13,7 @@ RUN npm ci --omit=dev
 COPY . .
 
 ENV NODE_ENV=production
-# Koyeb injecte PORT ; index.js ouvre un petit serveur "je suis vivant" dessus.
-EXPOSE 8000
+# Render injecte PORT ; index.js ouvre un petit serveur "je suis vivant" dessus.
+EXPOSE 10000
 
 CMD ["node", "index.js"]
