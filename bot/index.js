@@ -206,7 +206,74 @@ function feedEmbed(r) {
 
 /* ---------- jobs ---------- */
 
-const jobs = { hourly: null, directe: null, feedSub: null, feedPoll: null, newsSub: null, acScan: null };
+const jobs = { hourly: null, directe: null, feedSub: null, feedPoll: null, newsSub: null, acScan: null, tgcSub: null, tgcPoll: null };
+
+/* ---------- #evelatro-direct : journal des ouvertures de boosters TGC ----------
+   Alimenté par la fonction serveur tgc_open (table tgc_openings). Poste un
+   embed par ouverture dans le salon TGC_FEED_CHANNEL_ID (ou LIVE_CHANNEL_ID). */
+const TGC_FEED_CHANNEL_ID = process.env.TGC_FEED_CHANNEL_ID || LIVE_CHANNEL_ID || null;
+const TGC_GRADE_EMOJI = { UR: '🌈', SR: '✨', R: '🟡', UC: '⚪', C: '⚫' };
+const TGC_SET_NAME = { rezero: 'Re:Zero', onepiece: 'One Piece', tolove: 'To LOVE-Ru' };
+
+async function tgcOpeningEmbed(row) {
+  let pseudo = 'Joueur', avatar = null;
+  try {
+    const { data } = await db.from('profiles').select('pseudo,avatar_url').eq('user_id', row.user_id).maybeSingle();
+    if (data) { pseudo = data.pseudo || pseudo; avatar = data.avatar_url; }
+  } catch (e) {}
+  let names = {};
+  try {
+    const { data } = await db.from('tgc_cards').select('n,name').eq('set', row.set);
+    for (const c of (data || [])) names[c.n] = c.name;
+  } catch (e) {}
+  const lines = (row.cards || []).map(c =>
+    `${TGC_GRADE_EMOJI[c.grade] || ''} **${c.grade}** — ${names[c.n] || '#' + c.n}`);
+  const best = ['UR', 'SR', 'R', 'UC', 'C'].find(g => (row.cards || []).some(c => c.grade === g)) || 'C';
+  return new EmbedBuilder()
+    .setColor(best === 'UR' ? GOLD : best === 'SR' ? PINK : 0x8a99a1)
+    .setAuthor({ name: pseudo + (avatar ? '' : ''), iconURL: avatar || undefined })
+    .setTitle('🎴 Booster ' + (TGC_SET_NAME[row.set] || row.set) + (row.pity ? '  ·  garantie UR' : ''))
+    .setDescription(lines.join('\n'))
+    .setTimestamp(row.created_at ? new Date(row.created_at) : new Date());
+}
+
+function stopTgcFeed() {
+  if (jobs.tgcSub) { try { db.removeChannel(jobs.tgcSub); } catch (e) {} jobs.tgcSub = null; }
+  clearInterval(jobs.tgcPoll); jobs.tgcPoll = null;
+}
+
+async function startTgcFeed() {
+  stopTgcFeed();
+  // salon choisi via /cartes-direct on  (ou, à défaut, variable d'env)
+  let cfg = await cfgGet('tgc_feed');
+  const chanId = (cfg && cfg.channel_id) || TGC_FEED_CHANNEL_ID;
+  if (!chanId) { console.log('feed cartes : aucun salon (/cartes-direct on #salon) -> désactivé.'); return; }
+  const chan = await fetchChannel(chanId);
+  if (!chan) { console.warn('feed cartes : salon ' + chanId + ' introuvable (le bot y a-t-il accès ?).'); return; }
+  let sinceId = 0;
+  try {
+    const { data } = await db.from('tgc_openings').select('id').order('id', { ascending: false }).limit(1);
+    if (data && data[0]) sinceId = data[0].id;
+  } catch (e) {}
+  const posted = new Set();
+  async function postRow(r) {
+    if (!r || r.id == null || posted.has(r.id) || r.id <= sinceId) return;
+    posted.add(r.id); if (posted.size > 400) posted.delete(posted.values().next().value);
+    sinceId = Math.max(sinceId, r.id);
+    try { await chan.send({ embeds: [await tgcOpeningEmbed(r)] }); }
+    catch (e) { console.warn('feed cartes envoi KO :', e.message); }
+  }
+  jobs.tgcSub = db.channel('bot-tgc-' + Date.now())
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tgc_openings' }, p => postRow(p.new))
+    .subscribe((st) => console.log('feed cartes (temps réel) :', st));
+  jobs.tgcPoll = setInterval(async () => {
+    const { data, error } = await db.from('tgc_openings').select('*').gt('id', sinceId)
+      .order('id', { ascending: true }).limit(20);
+    if (error) { console.warn('feed cartes (relecture) KO :', error.message); return; }
+    for (const r of (data || [])) await postRow(r);
+  }, 15000);
+  console.log('feed cartes -> salon ' + TGC_FEED_CHANNEL_ID + '  (ouvertures de boosters).');
+}
 
 async function runAnticheatScan() {
   try {
@@ -634,6 +701,13 @@ const COMMANDS = [
       .addChannelOption(o => o.setName('salon').setDescription('Où poster').setRequired(true)))
     .addSubcommand(s => s.setName('off').setDescription('Désactiver')),
 
+  new SlashCommandBuilder().setName('cartes-direct')
+    .setDescription('Poster les ouvertures de boosters TGC dans un salon')
+    .setDefaultMemberPermissions(ADMIN)
+    .addSubcommand(s => s.setName('on').setDescription('Activer')
+      .addChannelOption(o => o.setName('salon').setDescription('Où poster (ex : #evelatro-direct)').setRequired(true)))
+    .addSubcommand(s => s.setName('off').setDescription('Désactiver')),
+
   new SlashCommandBuilder().setName('news')
     .setDescription('Éditer le panneau "Quoi de neuf ?" du jeu')
     .setDefaultMemberPermissions(ADMIN),
@@ -938,6 +1012,7 @@ client.once(Events.ClientReady, async (c) => {
   await startHourly();
   await startDirecte();
   await startFeed();
+  await startTgcFeed();
   await startNews();
   await ensureRolePanel();
   await ensureChatRules();
@@ -1460,6 +1535,30 @@ client.on(Events.InteractionCreate, async (i) => {
       return void i.editReply(sent
         ? `✅ C'est bon. Les parties (jouées en étant connecté à Discord) s'afficheront dans ${salon}.`
         : `⚠️ Enregistré, mais je ne peux pas écrire dans ${salon}. Donne au bot les droits **Envoyer des messages** + **Intégrer des liens** dans ce salon.`);
+    }
+
+    if (i.commandName === 'cartes-direct') {
+      await i.deferReply({ ephemeral: true });
+      if (sub === 'off') {
+        stopTgcFeed();
+        await cfgDel('tgc_feed');
+        return void i.editReply('Journal des ouvertures de boosters désactivé.');
+      }
+      const salon = i.options.getChannel('salon');
+      try { await cfgSet('tgc_feed', { channel_id: salon.id }); }
+      catch (e) { return void i.editReply(`❌ Impossible d'enregistrer : ${e.message}`); }
+      await startTgcFeed();
+      let sent = true;
+      try {
+        await salon.send({
+          embeds: [new EmbedBuilder().setColor(GOLD)
+            .setAuthor({ name: 'EveLatro! — Cartes' })
+            .setDescription('🎴 **Journal des boosters branché sur ce salon.**\n\nChaque booster ouvert dans le jeu s\'affichera ici, avec les cartes tirées.')],
+        });
+      } catch (e) { sent = false; console.warn('cartes-direct confirmation KO :', e.message); }
+      return void i.editReply(sent
+        ? `✅ C'est bon. Les ouvertures de boosters s'afficheront dans ${salon}.`
+        : `⚠️ Enregistré, mais je ne peux pas écrire dans ${salon}. Donne au bot les droits **Envoyer des messages** + **Intégrer des liens**.`);
     }
   } catch (e) {
     console.error(e);
