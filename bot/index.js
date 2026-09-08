@@ -571,15 +571,17 @@ async function ensureRolePanel(panelKey) {
   const guild = await client.guilds.fetch(DISCORD_GUILD_ID).catch(() => null);
   if (!guild) return;
 
-  const role = await resolveRole(guild, panel);
-  if (!role) { console.warn(`role-panel (${panelKey}) : rôle "${panel.roleName}" introuvable.`); return; }
+  let cfg = await cfgGet(panel.cfgKey);
+
+  // rôle : celui choisi via l'option role: d'une commande précédente (cfg.role_id) -> sinon recherche par nom
+  let role = cfg && cfg.role_id ? await guild.roles.fetch(cfg.role_id).catch(() => null) : null;
+  if (!role) role = await resolveRole(guild, panel);
+  if (!role) { console.warn(`role-panel (${panelKey}) : aucun rôle (relance la commande avec l'option role:, ou nomme un rôle "${panel.roleName}").`); return; }
 
   const me = await guild.members.fetchMe();
   if (!me.permissions.has(PermissionFlagsBits.ManageRoles) || me.roles.highest.position <= role.position) {
     console.warn(`role-panel (${panelKey}) : le bot ne peut pas donner ce rôle (permission "Gérer les rôles" + rôle du bot au-dessus).`);
   }
-
-  let cfg = await cfgGet(panel.cfgKey);
 
   // salon : config -> env -> salon nommé d'après le panneau
   let channel = cfg && cfg.channel_id ? await fetchChannel(cfg.channel_id) : null;
@@ -593,8 +595,8 @@ async function ensureRolePanel(panelKey) {
 
   const emoji = (cfg && cfg.emoji) || panel.emoji;
 
-  // message déjà en place ?
-  if (cfg && cfg.message_id && cfg.channel_id === channel.id) {
+  // message déjà en place ? (même salon ET même rôle — sinon on reposte avec le nouveau rôle)
+  if (cfg && cfg.message_id && cfg.channel_id === channel.id && cfg.role_id === role.id) {
     const existing = await channel.messages.fetch(cfg.message_id).catch(() => null);
     if (existing) {
       if (!existing.reactions.cache.some(r => (r.emoji.id || r.emoji.name) === emoji)) {
@@ -799,26 +801,31 @@ const COMMANDS = [
   new SlashCommandBuilder().setName('role-panel')
     .setDescription('(Re)poster le panneau du rôle "eve weird shit" (réaction = rôle)')
     .setDefaultMemberPermissions(ADMIN)
+    .addRoleOption(o => o.setName('role').setDescription('Quel rôle donner (sinon : rôle "eve weird shit")'))
     .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #eve-weird-shit)')),
 
   new SlashCommandBuilder().setName('jeuhorreur')
-    .setDescription('(Re)poster le panneau du rôle "jeu horreur" (réaction = rôle)')
+    .setDescription('(Re)poster un panneau "jeu horreur" (réaction = rôle)')
     .setDefaultMemberPermissions(ADMIN)
+    .addRoleOption(o => o.setName('role').setDescription('Quel rôle donner (sinon : cherche un rôle nommé "jeu horreur")'))
     .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #jeu-horreur)')),
 
   new SlashCommandBuilder().setName('jeudecul')
-    .setDescription('(Re)poster le panneau du rôle "jeu cul" — contenu 18+ (réaction = rôle)')
+    .setDescription('(Re)poster un panneau "jeu cul" — contenu 18+ (réaction = rôle)')
     .setDefaultMemberPermissions(ADMIN)
+    .addRoleOption(o => o.setName('role').setDescription('Quel rôle donner (sinon : cherche un rôle nommé "jeu cul")'))
     .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #jeu-cul)')),
 
   new SlashCommandBuilder().setName('extensiongoogle')
-    .setDescription('(Re)poster le panneau du rôle "extensions google" (réaction = rôle)')
+    .setDescription('(Re)poster un panneau "extensions google" (réaction = rôle)')
     .setDefaultMemberPermissions(ADMIN)
+    .addRoleOption(o => o.setName('role').setDescription('Quel rôle donner (sinon : cherche un rôle nommé "extensions google")'))
     .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #extensions-google)')),
 
   new SlashCommandBuilder().setName('towerdefense')
-    .setDescription('(Re)poster le panneau du rôle "tower defense" (réaction = rôle)')
+    .setDescription('(Re)poster un panneau "tower defense" (réaction = rôle)')
     .setDefaultMemberPermissions(ADMIN)
+    .addRoleOption(o => o.setName('role').setDescription('Quel rôle donner (sinon : cherche un rôle nommé "tower defense")'))
     .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #tower-defense)')),
 
   new SlashCommandBuilder().setName('jouer')
@@ -1309,11 +1316,11 @@ client.on(Events.InteractionCreate, async (i) => {
       '**/news** — éditer le panneau « Quoi de neuf ? » du jeu',
       '**/news-post** `salon:` — (re)poster ce panneau dans un salon',
       '**/annonce** `salon:` — poster l\'annonce du site (+ réaction 🤍)',
-      '**/role-panel** `salon:` — (re)poster le panneau du rôle « eve weird shit »',
-      '**/jeuhorreur** `salon:` — (re)poster le panneau du rôle « jeu horreur »',
-      '**/jeudecul** `salon:` — (re)poster le panneau du rôle « jeu cul » (18+)',
-      '**/extensiongoogle** `salon:` — (re)poster le panneau du rôle « extensions google »',
-      '**/towerdefense** `salon:` — (re)poster le panneau du rôle « tower defense »',
+      '**/role-panel** `role:` `salon:` — (re)poster le panneau du rôle « eve weird shit »',
+      '**/jeuhorreur** `role:` `salon:` — (re)poster un panneau "jeu horreur"',
+      '**/jeudecul** `role:` `salon:` — (re)poster un panneau "jeu cul" (18+)',
+      '**/extensiongoogle** `role:` `salon:` — (re)poster un panneau "extensions google"',
+      '**/towerdefense** `role:` `salon:` — (re)poster un panneau "tower defense"',
       '**/emilia-tann** — annoncer le jeu Emiliaaa Tann (embed + lien avec aperçu)',
       '**/tag-purg** — annoncer que le tag PURG est dispo (embed + **@everyone**)',
       '',
@@ -1521,17 +1528,21 @@ client.on(Events.InteractionCreate, async (i) => {
       const panel = ROLE_PANELS[panelKey];
       await i.deferReply({ ephemeral: true });
       const salon = i.options.getChannel('salon');
+      const roleOpt = i.options.getRole('role');
       await cfgDel(panel.cfgKey);
-      if (salon) await cfgSet(panel.cfgKey, { channel_id: salon.id });
+      const patch = {};
+      if (salon) patch.channel_id = salon.id;
+      if (roleOpt) patch.role_id = roleOpt.id;
+      if (Object.keys(patch).length) await cfgSet(panel.cfgKey, patch);
       await ensureRolePanel(panelKey);
       const cfg = await cfgGet(panel.cfgKey);
       if (cfg && cfg.message_id) return void i.editReply(`Panneau posté dans <#${cfg.channel_id}>.`);
 
       // ça n'a pas marché -> dire précisément quoi faire (Eve ne lit pas les logs du bot)
       const guild = await client.guilds.fetch(DISCORD_GUILD_ID).catch(() => null);
-      const role = guild ? await resolveRole(guild, panel) : null;
+      const role = roleOpt || (guild ? await resolveRole(guild, panel) : null);
       if (!role) {
-        return void i.editReply(`❌ Le rôle **${panel.roleName}** n'existe pas encore sur le serveur.\nCrée-le d'abord : Paramètres du serveur → Rôles → Créer un rôle → nomme-le exactement « ${panel.roleName} » → puis relance \`/${i.commandName}\`.`);
+        return void i.editReply(`❌ Aucun rôle choisi. Relance \`/${i.commandName}\` avec l'option \`role:\` pour choisir le rôle toi-même (ou crée un rôle nommé « ${panel.roleName} »).`);
       }
       return void i.editReply(salon
         ? `❌ Impossible de poster dans ${salon} — vérifie que le bot a la permission "Envoyer des messages" dans ce salon.`

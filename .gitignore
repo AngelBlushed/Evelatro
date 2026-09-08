@@ -32,3 +32,9 @@ build/
 
 # site/play est régénéré par npm run site:play — pas besoin dans le repo
 /site/play/
+
+# pipeline de génération des cartes TGC (outils + gros fichiers sources) — pas dans le repo
+/tgc/
+
+# logs du bot quand il tourne en local (LANCER-LE-BOT.bat)
+/bot/*.log
