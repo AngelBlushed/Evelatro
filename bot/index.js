@@ -646,12 +646,17 @@ async function ensureRolePanel(panelKey) {
     .setFooter({ text: 'Un clic sur la réaction suffit' });
 
   const att = emiliaAttachment();
-  const msg = await channel.send({ embeds: [emb], files: att ? [att] : [] });
-  await msg.react(emoji).catch(() => {});
-  await cfgSet(panel.cfgKey, {
-    guild_id: guild.id, channel_id: channel.id, message_id: msg.id, emoji, role_id: role.id,
-  });
-  console.log(`role-panel (${panelKey}) posté dans #${channel.name} (msg ${msg.id}).`);
+  try {
+    const msg = await channel.send({ embeds: [emb], files: att ? [att] : [] });
+    await msg.react(emoji).catch(e => console.warn(`role-panel (${panelKey}) : réaction KO (${e.message}) — retentera au prochain démarrage du bot.`));
+    await cfgSet(panel.cfgKey, {
+      guild_id: guild.id, channel_id: channel.id, message_id: msg.id, emoji, role_id: role.id,
+    });
+    console.log(`role-panel (${panelKey}) posté dans #${channel.name} (msg ${msg.id}).`);
+  } catch (e) {
+    // coupure réseau pendant l'envoi/la sauvegarde -> pas de crash, juste un avertissement (souci connu : ADSL d'Eve)
+    console.warn(`role-panel (${panelKey}) : échec envoi/sauvegarde (${e.message}) — relance la commande.`);
+  }
 }
 
 /* ---------- salon d'aide : rappel + warns ----------
