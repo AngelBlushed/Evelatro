@@ -208,28 +208,48 @@ const client = new Client({
 process.on('unhandledRejection', (e) => console.error('unhandledRejection :', (e && e.message) || e));
 process.on('uncaughtException', (e) => console.error('uncaughtException :', (e && e.message) || e));
 
-/* ---------- config persistante (table bot_config) ---------- */
+/* ---------- config persistante (table bot_config) ----------
+   Le bot tourne sur le PC d'Eve (ADSL) : une coupure réseau pendant une
+   lecture/écriture n'est pas rare. On retente 2 fois (courte pause) avant
+   d'abandonner, sauf si l'erreur est permanente (table absente) -> inutile
+   de retenter, on le dit clairement tout de suite. */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const isPermanentConfigError = msg => /relation .* does not exist|Could not find the table/i.test(msg || '');
 
 async function cfgGet(key) {
-  const { data, error } = await db.from('bot_config').select('value').eq('key', key).maybeSingle();
-  if (error) {
-    console.error(`bot_config LECTURE "${key}" : ${error.message}` +
-      (/relation .* does not exist|Could not find the table/i.test(error.message)
-        ? '  ->  la table bot_config n\'existe pas : Eve doit lancer supabase/supabase-setup.sql.' : ''));
-    return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data, error } = await db.from('bot_config').select('value').eq('key', key).maybeSingle();
+    if (!error) return data ? data.value : null;
+    if (isPermanentConfigError(error.message) || attempt === 2) {
+      console.error(`bot_config LECTURE "${key}" : ${error.message}` +
+        (isPermanentConfigError(error.message)
+          ? '  ->  la table bot_config n\'existe pas : Eve doit lancer supabase/supabase-setup.sql.' : ''));
+      return null;
+    }
+    await sleep(400 * (attempt + 1));
   }
-  return data ? data.value : null;
 }
 async function cfgSet(key, value) {
-  const { error } = await db.from('bot_config').upsert({ key, value, updated_at: new Date().toISOString() });
-  if (error) {
-    console.error(`bot_config ÉCRITURE "${key}" : ${error.message}`);
-    throw new Error('bot_config : ' + error.message);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await db.from('bot_config').upsert({ key, value, updated_at: new Date().toISOString() });
+    if (!error) return;
+    if (isPermanentConfigError(error.message) || attempt === 2) {
+      console.error(`bot_config ÉCRITURE "${key}" : ${error.message}`);
+      throw new Error('bot_config : ' + error.message);
+    }
+    await sleep(400 * (attempt + 1));
   }
 }
 async function cfgDel(key) {
-  const { error } = await db.from('bot_config').delete().eq('key', key);
-  if (error) console.error(`bot_config SUPPRESSION "${key}" : ${error.message}`);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await db.from('bot_config').delete().eq('key', key);
+    if (!error) return;
+    if (isPermanentConfigError(error.message) || attempt === 2) {
+      console.error(`bot_config SUPPRESSION "${key}" : ${error.message}`);
+      return;
+    }
+    await sleep(400 * (attempt + 1));
+  }
 }
 
 /* ---------- helpers ---------- */
@@ -399,6 +419,20 @@ async function fetchChannel(id) {
   if (!id) return null;
   const c = await client.channels.fetch(id).catch(() => null);
   return (c && c.isTextBased()) ? c : null;
+}
+
+/* Récupère un message SANS confondre "vraiment supprimé" (code Discord 10008)
+   et "coupure réseau" (timeout/ADSL) : dans ce 2e cas on ne SAIT PAS si le
+   message existe encore, donc on relance l'erreur plutôt que de renvoyer
+   null — sinon du code appelant qui teste juste ".catch(() => null)" croit
+   le message disparu et en reposte un en double sans supprimer l'original. */
+async function fetchMessageSafe(channel, id) {
+  try {
+    return await channel.messages.fetch(id);
+  } catch (e) {
+    if (e.code === 10008) return null;   // Unknown Message : bien supprimé
+    throw e;
+  }
 }
 
 async function postLeaderboard(channelId, reset) {
@@ -627,7 +661,13 @@ async function ensureRolePanel(panelKey) {
 
   // message déjà en place ? (même salon ET même rôle — sinon on reposte avec le nouveau rôle)
   if (cfg && cfg.message_id && cfg.channel_id === channel.id && cfg.role_id === role.id) {
-    const existing = await channel.messages.fetch(cfg.message_id).catch(() => null);
+    let existing;
+    try { existing = await fetchMessageSafe(channel, cfg.message_id); }
+    catch (e) {
+      // coupure réseau : on ne sait pas s'il existe déjà -> ne pas reposter un doublon
+      console.warn(`role-panel (${panelKey}) : vérif KO (${e.message}) — on suppose qu'il est déjà posté.`);
+      return;
+    }
     if (existing) {
       if (!existing.reactions.cache.some(r => (r.emoji.id || r.emoji.name) === emoji)) {
         await existing.react(emoji).catch(() => {});
@@ -688,7 +728,13 @@ async function repostHelpRules() {
   if (!channel) { console.warn(`chat-rules : salon ${CHAT_RULES_CHANNEL} introuvable.`); return; }
   const cfg = await cfgGet('chat_rules');
   if (cfg && cfg.message_id) {
-    const old = await channel.messages.fetch(cfg.message_id).catch(() => null);
+    let old;
+    try { old = await fetchMessageSafe(channel, cfg.message_id); }
+    catch (e) {
+      // on ne sait pas si l'ancien message existe encore (réseau) -> ne pas repost, sinon doublon
+      console.warn(`chat-rules : vérif de l'ancien message KO (${e.message}) — repost annulé cette fois pour éviter un doublon.`);
+      return;
+    }
     if (old && old.deletable) await old.delete().catch(() => {});
   }
   const att = emiliaAttachment();
@@ -702,7 +748,13 @@ async function ensureChatRules() {
   if (!channel) { console.warn(`chat-rules : salon ${CHAT_RULES_CHANNEL} introuvable.`); return; }
   const cfg = await cfgGet('chat_rules');
   if (cfg && cfg.message_id && cfg.channel_id === channel.id) {
-    const existing = await channel.messages.fetch(cfg.message_id).catch(() => null);
+    let existing;
+    try { existing = await fetchMessageSafe(channel, cfg.message_id); }
+    catch (e) {
+      // coupure réseau au démarrage : on suppose que le message posté avant est toujours là plutôt que d'en reposter un
+      console.warn(`chat-rules : vérif au démarrage KO (${e.message}) — on suppose qu'il est déjà posté.`);
+      return;
+    }
     if (existing) { console.log(`chat-rules déjà posté (#${channel.name}).`); return; }
   }
   await repostHelpRules();
