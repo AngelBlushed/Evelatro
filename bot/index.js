@@ -21,7 +21,7 @@
      /news
         -> ouvre un formulaire pour editer le panneau "Quoi de neuf ?"
            qui s'affiche au lancement du jeu.
-     /role-panel  /jeuhorreur  /jeudecul  /extensiongoogle  /towerdefense
+     /role-panel  /jeuhorreur  /jeudecul  /extensiongoogle  /towerdefense  /evekart
         -> (re)poste un panneau "reagis = role" (voir ROLE_PANELS). Reagir
            avec l'emoji donne le role, l'enlever le retire. Ce role ouvre
            ensuite des salons via les permissions Discord classiques.
@@ -151,6 +151,21 @@ const ROLE_PANELS = {
       `Réagis avec ${emoji} ci-dessous pour récupérer le rôle **@${role.name}**.`,
       '',
       'Ce rôle t\'ouvre le salon du jeu **Tower Defense**.',
+      '',
+      `_Enlève ta réaction ${emoji} pour rendre le rôle et re-cacher le salon._`,
+    ].join('\n'),
+  },
+  evekart: {
+    cfgKey: 'role_panel_evekart',
+    roleName: 'evekart',
+    roleId: null,
+    channelName: 'evekart',
+    channelEnvVar: null,
+    emoji: '🏎️',
+    description: (role, emoji) => [
+      `Réagis avec ${emoji} ci-dessous pour récupérer le rôle **@${role.name}**.`,
+      '',
+      'Ce rôle t\'ouvre le salon du jeu **EveKart**.',
       '',
       `_Enlève ta réaction ${emoji} pour rendre le rôle et re-cacher le salon._`,
     ].join('\n'),
@@ -828,6 +843,12 @@ const COMMANDS = [
     .addRoleOption(o => o.setName('role').setDescription('Quel rôle donner (sinon : cherche un rôle nommé "tower defense")'))
     .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #tower-defense)')),
 
+  new SlashCommandBuilder().setName('evekart')
+    .setDescription('(Re)poster un panneau "EveKart" (réaction = rôle)')
+    .setDefaultMemberPermissions(ADMIN)
+    .addRoleOption(o => o.setName('role').setDescription('Quel rôle donner (sinon : cherche un rôle nommé "evekart")'))
+    .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #evekart)')),
+
   new SlashCommandBuilder().setName('jouer')
     .setDescription('Jouer à EveLatro ici : Blackjack, Machines, Roulette, Poker, Caisses'),
 
@@ -1321,6 +1342,7 @@ client.on(Events.InteractionCreate, async (i) => {
       '**/jeudecul** `role:` `salon:` — (re)poster un panneau "jeu cul" (18+)',
       '**/extensiongoogle** `role:` `salon:` — (re)poster un panneau "extensions google"',
       '**/towerdefense** `role:` `salon:` — (re)poster un panneau "tower defense"',
+      '**/evekart** `role:` `salon:` — (re)poster un panneau "EveKart"',
       '**/emilia-tann** — annoncer le jeu Emiliaaa Tann (embed + lien avec aperçu)',
       '**/tag-purg** — annoncer que le tag PURG est dispo (embed + **@everyone**)',
       '',
@@ -1521,7 +1543,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
     const ROLE_PANEL_COMMANDS = {
       'role-panel': 'casino', 'jeuhorreur': 'horreur', 'jeudecul': 'cul',
-      'extensiongoogle': 'extension', 'towerdefense': 'tower',
+      'extensiongoogle': 'extension', 'towerdefense': 'tower', 'evekart': 'evekart',
     };
     if (ROLE_PANEL_COMMANDS[i.commandName]) {
       const panelKey = ROLE_PANEL_COMMANDS[i.commandName];
