@@ -103,7 +103,7 @@ export function makeShared(db) {
       await db.from('wallet').upsert({ user_id: uid, credits: START, updated_at: new Date().toISOString() });
       return START;
     } catch (e) {
-      console.warn('wallet.balOf :', e.message, '(table `wallet` créée ? supabase-setup.sql)');
+      console.warn('wallet.balOf :', e.message, '(table `wallet` créée ? supabase/supabase-setup.sql)');
       return START;
     }
   }

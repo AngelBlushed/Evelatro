@@ -21,6 +21,10 @@
      /news
         -> ouvre un formulaire pour editer le panneau "Quoi de neuf ?"
            qui s'affiche au lancement du jeu.
+     /role-panel  /jeuhorreur  /jeudecul  /extensiongoogle  /towerdefense
+        -> (re)poste un panneau "reagis = role" (voir ROLE_PANELS). Reagir
+           avec l'emoji donne le role, l'enlever le retire. Ce role ouvre
+           ensuite des salons via les permissions Discord classiques.
      /warn  membre:@x  raison:...
      /unwarn  membre:@x
         -> salon d'aide : +1 warn ; a 3 warns le membre passe en lecture
@@ -66,14 +70,92 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const {
   DISCORD_TOKEN, SUPABASE_URL, SUPABASE_KEY,
   DISCORD_GUILD_ID, LIVE_CHANNEL_ID, SITE_URL, SET_AVATAR,
-  ROLE_PANEL_CHANNEL_ID,
 } = process.env;
 
-/* Rôle proposé par le panneau de réaction (voir ensureRolePanel / /role-panel) */
-const WEIRD_ROLE_NAME = 'eve weird shit';
-const WEIRD_ROLE_ID = '1543192258101252136';   // secours si le nom change
-const WEIRD_CHANNEL_NAME = 'eve-weird-shit';
-const WEIRD_EMOJI = '🎰';
+/* ---------- panneaux "réaction = rôle" (voir ensureRolePanel plus bas) ----------
+   Un panneau = un embed avec une réaction : réagir donne le rôle, enlever la
+   réaction le retire. Le rôle ouvre ensuite des salons via les permissions
+   Discord classiques sur ce rôle (à faire une fois dans Discord, pas ici —
+   voir CLAUDE.md / PLAN-DU-CODE.md). */
+const ROLE_PANELS = {
+  casino: {
+    cfgKey: 'role_panel',            // clé historique — ne pas renommer, le panneau est déjà posté
+    roleName: 'eve weird shit',
+    roleId: '1543192258101252136',   // secours si le nom du rôle change
+    channelName: 'eve-weird-shit',
+    channelEnvVar: 'ROLE_PANEL_CHANNEL_ID',
+    emoji: '🎰',
+    description: (role, emoji) => [
+      `Réagis avec ${emoji} ci-dessous pour récupérer le rôle **@${role.name}**.`,
+      '',
+      'Ce rôle t\'ouvre les salons qui vont avec : le casino **EveLatro!**, son classement et son flux en direct.',
+      '',
+      `_Enlève ta réaction ${emoji} pour rendre le rôle et re-cacher ces salons._`,
+    ].join('\n'),
+  },
+  horreur: {
+    cfgKey: 'role_panel_horreur',
+    roleName: 'jeu horreur',
+    roleId: null,
+    channelName: 'jeu-horreur',
+    channelEnvVar: null,
+    emoji: '🔪',
+    description: (role, emoji) => [
+      `Réagis avec ${emoji} ci-dessous pour récupérer le rôle **@${role.name}**.`,
+      '',
+      'Ce rôle t\'ouvre le salon du **jeu d\'horreur**.',
+      '',
+      `_Enlève ta réaction ${emoji} pour rendre le rôle et re-cacher le salon._`,
+    ].join('\n'),
+  },
+  cul: {
+    cfgKey: 'role_panel_cul',
+    roleName: 'jeu cul',
+    roleId: null,
+    channelName: 'jeu-cul',
+    channelEnvVar: null,
+    emoji: '🔞',
+    description: (role, emoji) => [
+      '⚠️ **Contenu réservé aux adultes (18+), à caractère pornographique.**',
+      '',
+      `Réagis avec ${emoji} ci-dessous — **seulement si tu es majeur·e et que ça ne te dérange pas** — pour récupérer le rôle **@${role.name}**.`,
+      '',
+      '||Ce rôle ouvre le salon du jeu pornographique d\'Eve. Contenu explicite : ne clique pas si ça peut te choquer.||',
+      '',
+      `_Enlève ta réaction ${emoji} pour rendre le rôle et re-cacher le salon._`,
+    ].join('\n'),
+  },
+  extension: {
+    cfgKey: 'role_panel_extension',
+    roleName: 'extensions google',
+    roleId: null,
+    channelName: 'extensions-google',
+    channelEnvVar: null,
+    emoji: '🧩',
+    description: (role, emoji) => [
+      `Réagis avec ${emoji} ci-dessous pour récupérer le rôle **@${role.name}**.`,
+      '',
+      'Ce rôle t\'ouvre le salon qui présente les **extensions Google Chrome** faites par Eve.',
+      '',
+      `_Enlève ta réaction ${emoji} pour rendre le rôle et re-cacher le salon._`,
+    ].join('\n'),
+  },
+  tower: {
+    cfgKey: 'role_panel_tower',
+    roleName: 'tower defense',
+    roleId: null,
+    channelName: 'tower-defense',
+    channelEnvVar: null,
+    emoji: '🏰',
+    description: (role, emoji) => [
+      `Réagis avec ${emoji} ci-dessous pour récupérer le rôle **@${role.name}**.`,
+      '',
+      'Ce rôle t\'ouvre le salon du jeu **Tower Defense**.',
+      '',
+      `_Enlève ta réaction ${emoji} pour rendre le rôle et re-cacher le salon._`,
+    ].join('\n'),
+  },
+};
 
 if (!DISCORD_TOKEN || !SUPABASE_URL || !SUPABASE_KEY) {
   console.error('Il manque DISCORD_TOKEN, SUPABASE_URL ou SUPABASE_KEY dans .env');
@@ -103,7 +185,7 @@ async function cfgGet(key) {
   if (error) {
     console.error(`bot_config LECTURE "${key}" : ${error.message}` +
       (/relation .* does not exist|Could not find the table/i.test(error.message)
-        ? '  ->  la table bot_config n\'existe pas : Eve doit lancer supabase-setup.sql.' : ''));
+        ? '  ->  la table bot_config n\'existe pas : Eve doit lancer supabase/supabase-setup.sql.' : ''));
     return null;
   }
   return data ? data.value : null;
@@ -280,7 +362,7 @@ async function runAnticheatScan() {
     const { data, error } = await db.rpc('anticheat_scan');
     if (error) { console.warn('anticheat_scan :', error.message); return; }
     if (data) console.log(`anticheat_scan : ${data} nouveau(x) compte(s) à examiner (/triche-liste).`);
-  } catch (e) { /* fonction pas encore créée (supabase-anticheat.sql pas lancé) */ }
+  } catch (e) { /* fonction pas encore créée (supabase/supabase-anticheat.sql pas lancé) */ }
 }
 
 async function fetchChannel(id) {
@@ -473,40 +555,43 @@ async function startNews() {
   console.log(`news -> salon ${cfg.channel_id} (auto quand Eve édite).`);
 }
 
-/* ---------- panneau rôle "eve weird shit" (réaction -> rôle) ---------- */
+/* ---------- panneaux rôle (réaction -> rôle) ---------- */
 
-async function resolveWeirdRole(guild) {
+async function resolveRole(guild, panel) {
   const roles = await guild.roles.fetch();
-  return roles.find(r => r.name.toLowerCase() === WEIRD_ROLE_NAME)
-      || roles.get(WEIRD_ROLE_ID)
+  return roles.find(r => r.name.toLowerCase() === panel.roleName)
+      || (panel.roleId ? roles.get(panel.roleId) : null)
       || null;
 }
 
-async function ensureRolePanel() {
+async function ensureRolePanel(panelKey) {
+  const panel = ROLE_PANELS[panelKey];
+  if (!panel) return;
+
   const guild = await client.guilds.fetch(DISCORD_GUILD_ID).catch(() => null);
   if (!guild) return;
 
-  const role = await resolveWeirdRole(guild);
-  if (!role) { console.warn(`role-panel : rôle "${WEIRD_ROLE_NAME}" introuvable.`); return; }
+  const role = await resolveRole(guild, panel);
+  if (!role) { console.warn(`role-panel (${panelKey}) : rôle "${panel.roleName}" introuvable.`); return; }
 
   const me = await guild.members.fetchMe();
   if (!me.permissions.has(PermissionFlagsBits.ManageRoles) || me.roles.highest.position <= role.position) {
-    console.warn('role-panel : le bot ne peut pas donner ce rôle (permission "Gérer les rôles" + rôle du bot au-dessus).');
+    console.warn(`role-panel (${panelKey}) : le bot ne peut pas donner ce rôle (permission "Gérer les rôles" + rôle du bot au-dessus).`);
   }
 
-  let cfg = await cfgGet('role_panel');
+  let cfg = await cfgGet(panel.cfgKey);
 
-  // salon : config -> env -> salon nommé "eve-weird-shit"
+  // salon : config -> env -> salon nommé d'après le panneau
   let channel = cfg && cfg.channel_id ? await fetchChannel(cfg.channel_id) : null;
-  if (!channel && ROLE_PANEL_CHANNEL_ID) channel = await fetchChannel(ROLE_PANEL_CHANNEL_ID);
+  if (!channel && panel.channelEnvVar && process.env[panel.channelEnvVar]) channel = await fetchChannel(process.env[panel.channelEnvVar]);
   if (!channel) {
     const chans = await guild.channels.fetch();
-    const named = chans.find(c => c && c.isTextBased?.() && c.name === WEIRD_CHANNEL_NAME);
+    const named = chans.find(c => c && c.isTextBased?.() && c.name === panel.channelName);
     if (named) channel = named;
   }
-  if (!channel) { console.warn('role-panel : aucun salon où poster.'); return; }
+  if (!channel) { console.warn(`role-panel (${panelKey}) : aucun salon où poster.`); return; }
 
-  const emoji = (cfg && cfg.emoji) || WEIRD_EMOJI;
+  const emoji = (cfg && cfg.emoji) || panel.emoji;
 
   // message déjà en place ?
   if (cfg && cfg.message_id && cfg.channel_id === channel.id) {
@@ -515,7 +600,7 @@ async function ensureRolePanel() {
       if (!existing.reactions.cache.some(r => (r.emoji.id || r.emoji.name) === emoji)) {
         await existing.react(emoji).catch(() => {});
       }
-      console.log(`role-panel déjà posté (#${channel.name}, msg ${existing.id}).`);
+      console.log(`role-panel (${panelKey}) déjà posté (#${channel.name}, msg ${existing.id}).`);
       return;
     }
   }
@@ -525,22 +610,16 @@ async function ensureRolePanel() {
     .setAuthor({ name: 'EveLatro!', iconURL: 'attachment://emilia.png' })
     .setThumbnail('attachment://emilia.png')
     .setTitle(`${emoji}  Rôle : ${role.name}`)
-    .setDescription([
-      `Réagis avec ${emoji} ci-dessous pour récupérer le rôle **@${role.name}**.`,
-      '',
-      'Ce rôle t\'ouvre les salons qui vont avec : le casino **EveLatro!**, son classement et son flux en direct.',
-      '',
-      `_Enlève ta réaction ${emoji} pour rendre le rôle et re-cacher ces salons._`,
-    ].join('\n'))
+    .setDescription(panel.description(role, emoji))
     .setFooter({ text: 'Un clic sur la réaction suffit' });
 
   const att = emiliaAttachment();
   const msg = await channel.send({ embeds: [emb], files: att ? [att] : [] });
   await msg.react(emoji).catch(() => {});
-  await cfgSet('role_panel', {
+  await cfgSet(panel.cfgKey, {
     guild_id: guild.id, channel_id: channel.id, message_id: msg.id, emoji, role_id: role.id,
   });
-  console.log(`role-panel posté dans #${channel.name} (msg ${msg.id}).`);
+  console.log(`role-panel (${panelKey}) posté dans #${channel.name} (msg ${msg.id}).`);
 }
 
 /* ---------- salon d'aide : rappel + warns ----------
@@ -649,19 +728,24 @@ async function clearWarn(member) {
 async function handleRolePanelReaction(reaction, user, add) {
   try {
     if (user.bot) return;
-    const cfg = await cfgGet('role_panel');
-    if (!cfg || !cfg.message_id || !cfg.role_id) return;
     if (reaction.partial) { try { await reaction.fetch(); } catch { return; } }
-    if (reaction.message.id !== cfg.message_id) return;
-    if ((reaction.emoji.id || reaction.emoji.name) !== cfg.emoji) return;
 
-    const guild = reaction.message.guild || await client.guilds.fetch(cfg.guild_id).catch(() => null);
-    if (!guild) return;
-    const member = await guild.members.fetch(user.id).catch(() => null);
-    if (!member) return;
+    for (const panelKey of Object.keys(ROLE_PANELS)) {
+      const panel = ROLE_PANELS[panelKey];
+      const cfg = await cfgGet(panel.cfgKey);
+      if (!cfg || !cfg.message_id || !cfg.role_id) continue;
+      if (reaction.message.id !== cfg.message_id) continue;
+      if ((reaction.emoji.id || reaction.emoji.name) !== cfg.emoji) continue;
 
-    if (add) await member.roles.add(cfg.role_id, 'Panneau eve weird shit');
-    else await member.roles.remove(cfg.role_id, 'Panneau eve weird shit');
+      const guild = reaction.message.guild || await client.guilds.fetch(cfg.guild_id).catch(() => null);
+      if (!guild) return;
+      const member = await guild.members.fetch(user.id).catch(() => null);
+      if (!member) return;
+
+      if (add) await member.roles.add(cfg.role_id, `Panneau ${panelKey}`);
+      else await member.roles.remove(cfg.role_id, `Panneau ${panelKey}`);
+      return;
+    }
   } catch (e) {
     console.warn('role-panel réaction :', e.message);
   }
@@ -716,6 +800,26 @@ const COMMANDS = [
     .setDescription('(Re)poster le panneau du rôle "eve weird shit" (réaction = rôle)')
     .setDefaultMemberPermissions(ADMIN)
     .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #eve-weird-shit)')),
+
+  new SlashCommandBuilder().setName('jeuhorreur')
+    .setDescription('(Re)poster le panneau du rôle "jeu horreur" (réaction = rôle)')
+    .setDefaultMemberPermissions(ADMIN)
+    .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #jeu-horreur)')),
+
+  new SlashCommandBuilder().setName('jeudecul')
+    .setDescription('(Re)poster le panneau du rôle "jeu cul" — contenu 18+ (réaction = rôle)')
+    .setDefaultMemberPermissions(ADMIN)
+    .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #jeu-cul)')),
+
+  new SlashCommandBuilder().setName('extensiongoogle')
+    .setDescription('(Re)poster le panneau du rôle "extensions google" (réaction = rôle)')
+    .setDefaultMemberPermissions(ADMIN)
+    .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #extensions-google)')),
+
+  new SlashCommandBuilder().setName('towerdefense')
+    .setDescription('(Re)poster le panneau du rôle "tower defense" (réaction = rôle)')
+    .setDefaultMemberPermissions(ADMIN)
+    .addChannelOption(o => o.setName('salon').setDescription('Où poster (défaut : #tower-defense)')),
 
   new SlashCommandBuilder().setName('jouer')
     .setDescription('Jouer à EveLatro ici : Blackjack, Machines, Roulette, Poker, Caisses'),
@@ -997,7 +1101,7 @@ client.once(Events.ClientReady, async (c) => {
   } catch (e) {
     console.error('✖  bot_config INACCESSIBLE :', e.message);
     console.error('   → Les commandes /auto-leaderboard, /auto-directe, /feed ne pourront rien mémoriser.');
-    console.error('   → Vérifie : (1) supabase-setup.sql a bien été lancé ; (2) SUPABASE_KEY dans .env');
+    console.error('   → Vérifie : (1) supabase/supabase-setup.sql a bien été lancé ; (2) SUPABASE_KEY dans .env');
     console.error('     est la clé  service_role  (PAS la clé anon) — Supabase > Project Settings > API.');
   }
 
@@ -1014,7 +1118,7 @@ client.once(Events.ClientReady, async (c) => {
   await startFeed();
   await startTgcFeed();
   await startNews();
-  await ensureRolePanel();
+  for (const panelKey of Object.keys(ROLE_PANELS)) await ensureRolePanel(panelKey);
   await ensureChatRules();
 
   // anti-triche : scan des ratios gains/mises toutes les 10 min
@@ -1092,7 +1196,7 @@ client.on(Events.InteractionCreate, async (i) => {
         return;
       } catch (e) {
         console.error('/jouer :', e);
-        return void i.editReply('Impossible d\'ouvrir le casino : ' + e.message + '\n(les tables `wallet` / `profiles` existent-elles ? relance `supabase-setup.sql`.)');
+        return void i.editReply('Impossible d\'ouvrir le casino : ' + e.message + '\n(les tables `wallet` / `profiles` existent-elles ? relance `supabase/supabase-setup.sql`.)');
       }
     }
     if (i.commandName === 'solde') {
@@ -1106,7 +1210,7 @@ client.on(Events.InteractionCreate, async (i) => {
       const prof = await shared.resolve(i.user.id);
       if (!prof) return void i.editReply('Ton compte Discord n\'est pas lié au jeu. Connecte-toi à Discord DANS EveLatro d\'abord.');
       try { return void i.editReply(await skinsPayload(prof, shared)); }
-      catch (e) { console.error('/vestiaire', e); return void i.editReply('Souci : ' + e.message + '\n(table `user_skins` créée ? relance `supabase-setup.sql`.)'); }
+      catch (e) { console.error('/vestiaire', e); return void i.editReply('Souci : ' + e.message + '\n(table `user_skins` créée ? relance `supabase/supabase-setup.sql`.)'); }
     }
     if (i.commandName === 'annonce') {
       await i.deferReply({ ephemeral: true });
@@ -1184,7 +1288,7 @@ client.on(Events.InteractionCreate, async (i) => {
       const { data: prof } = await db.from('profiles').select('user_id,pseudo').eq('discord_id', target.id).maybeSingle();
       if (!prof) return void i.editReply(`**${target.username}** n'est pas lié au jeu. Il doit se connecter à Discord dans EveLatro une fois, puis relance la commande.`);
       const { error } = await db.from('cs_gifts').insert({ user_id: prof.user_id, discord_id: target.id, skin });
-      if (error) return void i.editReply('Erreur : ' + error.message + '\n(table `cs_gifts` créée ? relance `supabase-anticheat.sql`.)');
+      if (error) return void i.editReply('Erreur : ' + error.message + '\n(table `cs_gifts` créée ? relance `supabase/supabase-anticheat.sql`.)');
       console.log(`DONNER-SKIN par ${i.user.tag} -> ${target.tag} : ${skin.weapon} | ${skin.name}`);
       return void i.editReply(`🎁 **${skin.weapon} | ${skin.name}** — ${skin.rarity}${skin.stat ? ' · StatTrak™' : ''} · ${skin.wear} · ~${nf.format(skin.price)} cr.\nEnvoyé à ${target}. Il l'aura à sa prochaine ouverture du jeu (inventaire des caisses).`);
     }
@@ -1206,6 +1310,10 @@ client.on(Events.InteractionCreate, async (i) => {
       '**/news-post** `salon:` — (re)poster ce panneau dans un salon',
       '**/annonce** `salon:` — poster l\'annonce du site (+ réaction 🤍)',
       '**/role-panel** `salon:` — (re)poster le panneau du rôle « eve weird shit »',
+      '**/jeuhorreur** `salon:` — (re)poster le panneau du rôle « jeu horreur »',
+      '**/jeudecul** `salon:` — (re)poster le panneau du rôle « jeu cul » (18+)',
+      '**/extensiongoogle** `salon:` — (re)poster le panneau du rôle « extensions google »',
+      '**/towerdefense** `salon:` — (re)poster le panneau du rôle « tower defense »',
       '**/emilia-tann** — annoncer le jeu Emiliaaa Tann (embed + lien avec aperçu)',
       '**/tag-purg** — annoncer que le tag PURG est dispo (embed + **@everyone**)',
       '',
@@ -1248,7 +1356,7 @@ client.on(Events.InteractionCreate, async (i) => {
       const { data, error } = await db.from('cheat_flags')
         .select('id,pseudo,discord_id,severity,reason,details,created_at')
         .eq('status', 'open').order('created_at', { ascending: false }).limit(20);
-      if (error) return void i.editReply('Erreur : ' + error.message + '\n(as-tu lancé `supabase-anticheat.sql` ?)');
+      if (error) return void i.editReply('Erreur : ' + error.message + '\n(as-tu lancé `supabase/supabase-anticheat.sql` ?)');
       if (!data || !data.length) return void i.editReply('✅ Aucun compte signalé.');
       const emb = new EmbedBuilder().setColor(0xE5595F).setTitle('🚩 Comptes signalés')
         .setDescription(data.map(f =>
@@ -1404,16 +1512,30 @@ client.on(Events.InteractionCreate, async (i) => {
       });
     }
 
-    if (i.commandName === 'role-panel') {
+    const ROLE_PANEL_COMMANDS = {
+      'role-panel': 'casino', 'jeuhorreur': 'horreur', 'jeudecul': 'cul',
+      'extensiongoogle': 'extension', 'towerdefense': 'tower',
+    };
+    if (ROLE_PANEL_COMMANDS[i.commandName]) {
+      const panelKey = ROLE_PANEL_COMMANDS[i.commandName];
+      const panel = ROLE_PANELS[panelKey];
       await i.deferReply({ ephemeral: true });
       const salon = i.options.getChannel('salon');
-      await cfgDel('role_panel');
-      if (salon) await cfgSet('role_panel', { channel_id: salon.id });
-      await ensureRolePanel();
-      const cfg = await cfgGet('role_panel');
-      return void i.editReply(cfg && cfg.message_id
-        ? `Panneau posté dans <#${cfg.channel_id}>.`
-        : 'Impossible de poster le panneau (voir les logs du bot).');
+      await cfgDel(panel.cfgKey);
+      if (salon) await cfgSet(panel.cfgKey, { channel_id: salon.id });
+      await ensureRolePanel(panelKey);
+      const cfg = await cfgGet(panel.cfgKey);
+      if (cfg && cfg.message_id) return void i.editReply(`Panneau posté dans <#${cfg.channel_id}>.`);
+
+      // ça n'a pas marché -> dire précisément quoi faire (Eve ne lit pas les logs du bot)
+      const guild = await client.guilds.fetch(DISCORD_GUILD_ID).catch(() => null);
+      const role = guild ? await resolveRole(guild, panel) : null;
+      if (!role) {
+        return void i.editReply(`❌ Le rôle **${panel.roleName}** n'existe pas encore sur le serveur.\nCrée-le d'abord : Paramètres du serveur → Rôles → Créer un rôle → nomme-le exactement « ${panel.roleName} » → puis relance \`/${i.commandName}\`.`);
+      }
+      return void i.editReply(salon
+        ? `❌ Impossible de poster dans ${salon} — vérifie que le bot a la permission "Envoyer des messages" dans ce salon.`
+        : `❌ Aucun salon trouvé. Choisis un salon avec \`salon:\` en relançant \`/${i.commandName}\`, ou crée un salon nommé **#${panel.channelName}**.`);
     }
 
     if (i.commandName === 'warn') {
@@ -1490,7 +1612,7 @@ client.on(Events.InteractionCreate, async (i) => {
       try {
         await cfgSet('auto_leaderboard', { channel_id: salon.id, reset });
       } catch (e) {
-        return void i.editReply(`❌ Impossible d'enregistrer : ${e.message}\n(la table \`bot_config\` existe-t-elle ? Lance \`supabase-setup.sql\`.)`);
+        return void i.editReply(`❌ Impossible d'enregistrer : ${e.message}\n(la table \`bot_config\` existe-t-elle ? Lance \`supabase/supabase-setup.sql\`.)`);
       }
       await startHourly();
       // envoi immédiat pour vérifier tout de suite que ça marche
