@@ -10,10 +10,6 @@
      /auto-leaderboard off
         -> poste le classement dans le salon toutes les heures pile.
            reset:true  -> vide "scores" apres l'envoi (competition d'1h).
-     /auto-directe on  salon:#x
-     /auto-directe off
-        -> un message dans le salon, rafraichi automatiquement toutes
-           les 5 secondes avec le flux en direct.
      /feed on  salon:#x
      /feed off
         -> poste chaque action (date / jeu / main / mise / gagne-perdu)
@@ -338,7 +334,7 @@ function feedEmbed(r) {
 
 /* ---------- jobs ---------- */
 
-const jobs = { hourly: null, directe: null, feedSub: null, feedPoll: null, newsSub: null, acScan: null, tgcSub: null, tgcPoll: null };
+const jobs = { hourly: null, feedSub: null, newsSub: null, acScan: null, tgcSub: null };
 
 /* ---------- #evelatro-direct : journal des ouvertures de boosters TGC ----------
    Alimenté par la fonction serveur tgc_open (table tgc_openings). Poste un
@@ -371,7 +367,6 @@ async function tgcOpeningEmbed(row) {
 
 function stopTgcFeed() {
   if (jobs.tgcSub) { try { db.removeChannel(jobs.tgcSub); } catch (e) {} jobs.tgcSub = null; }
-  clearInterval(jobs.tgcPoll); jobs.tgcPoll = null;
 }
 
 async function startTgcFeed() {
@@ -398,13 +393,7 @@ async function startTgcFeed() {
   jobs.tgcSub = db.channel('bot-tgc-' + Date.now())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tgc_openings' }, p => postRow(p.new))
     .subscribe((st) => console.log('feed cartes (temps réel) :', st));
-  jobs.tgcPoll = setInterval(async () => {
-    const { data, error } = await db.from('tgc_openings').select('*').gt('id', sinceId)
-      .order('id', { ascending: true }).limit(20);
-    if (error) { console.warn('feed cartes (relecture) KO :', error.message); return; }
-    for (const r of (data || [])) await postRow(r);
-  }, 15000);
-  console.log('feed cartes -> salon ' + TGC_FEED_CHANNEL_ID + '  (ouvertures de boosters).');
+  console.log('feed cartes -> salon ' + TGC_FEED_CHANNEL_ID + '  (ouvertures de boosters, temps réel).');
 }
 
 async function runAnticheatScan() {
@@ -485,31 +474,8 @@ async function startHourly() {
   console.log(`auto-leaderboard -> salon ${cfg.channel_id} (reset:${!!cfg.reset}), prochain envoi dans ${Math.round(wait / 60000)} min.`);
 }
 
-async function startDirecte() {
-  clearInterval(jobs.directe);
-  const cfg = await cfgGet('auto_directe');
-  if (!cfg || !cfg.channel_id) return;
-  const chan = await fetchChannel(cfg.channel_id);
-  if (!chan) { console.warn('auto-directe : salon introuvable.'); return; }
-
-  let msg = null;
-  if (cfg.message_id) msg = await chan.messages.fetch(cfg.message_id).catch(() => null);
-  if (!msg) {
-    msg = await chan.send(await livePayload()).catch(() => null);
-    if (msg) await cfgSet('auto_directe', { channel_id: cfg.channel_id, message_id: msg.id });
-  }
-  if (!msg) return;
-
-  jobs.directe = setInterval(async () => {
-    try { await msg.edit(await livePayload()); }
-    catch (e) { /* message supprime ? on arrete */ clearInterval(jobs.directe); jobs.directe = null; }
-  }, 5000);
-  console.log(`auto-directe -> salon ${cfg.channel_id}, message ${msg.id}, rafraîchi toutes les 5 s.`);
-}
-
 function stopFeed() {
   if (jobs.feedSub) { try { db.removeChannel(jobs.feedSub); } catch (e) {} jobs.feedSub = null; }
-  clearInterval(jobs.feedPoll); jobs.feedPoll = null;
 }
 
 async function startFeed() {
@@ -536,23 +502,12 @@ async function startFeed() {
     }
   }
 
-  // 1) temps réel
   jobs.feedSub = db.channel('bot-feed-' + Date.now())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity' },
       (p) => postRow(p.new))
     .subscribe((st) => console.log('feed (temps réel) :', st));
 
-  // 2) FILET DE SÉCURITÉ : on relit la table toutes les 12 s (marche même si le
-  //    "temps réel" n'est pas activé côté Supabase)
-  jobs.feedPoll = setInterval(async () => {
-    const { data, error } = await db.from('activity')
-      .select('*').gt('created_at', since)
-      .order('created_at', { ascending: true }).limit(20);
-    if (error) { console.warn('feed (relecture) KO :', error.message); return; }
-    for (const r of (data || [])) await postRow(r);
-  }, 12000);
-
-  console.log(`feed -> salon ${cfg.channel_id}  (temps réel + relecture 12 s).`);
+  console.log(`feed -> salon ${cfg.channel_id}  (temps réel).`);
 }
 
 /* ---------- news : embed + auto-post quand Eve édite la news ---------- */
@@ -858,13 +813,6 @@ const COMMANDS = [
     .addSubcommand(s => s.setName('on').setDescription('Activer')
       .addChannelOption(o => o.setName('salon').setDescription('Où poster').setRequired(true))
       .addBooleanOption(o => o.setName('reset').setDescription('Vider le classement après l\'envoi')))
-    .addSubcommand(s => s.setName('off').setDescription('Désactiver')),
-
-  new SlashCommandBuilder().setName('auto-directe')
-    .setDescription('Un message auto-rafraîchi (5 s) avec le flux en direct')
-    .setDefaultMemberPermissions(ADMIN)
-    .addSubcommand(s => s.setName('on').setDescription('Activer')
-      .addChannelOption(o => o.setName('salon').setDescription('Où poster').setRequired(true)))
     .addSubcommand(s => s.setName('off').setDescription('Désactiver')),
 
   new SlashCommandBuilder().setName('feed')
@@ -1206,7 +1154,7 @@ client.once(Events.ClientReady, async (c) => {
     console.log('✔  bot_config : lecture + écriture OK.');
   } catch (e) {
     console.error('✖  bot_config INACCESSIBLE :', e.message);
-    console.error('   → Les commandes /auto-leaderboard, /auto-directe, /feed ne pourront rien mémoriser.');
+    console.error('   → Les commandes /auto-leaderboard, /feed ne pourront rien mémoriser.');
     console.error('   → Vérifie : (1) supabase/supabase-setup.sql a bien été lancé ; (2) SUPABASE_KEY dans .env');
     console.error('     est la clé  service_role  (PAS la clé anon) — Supabase > Project Settings > API.');
   }
@@ -1220,7 +1168,6 @@ client.once(Events.ClientReady, async (c) => {
   }
 
   await startHourly();
-  await startDirecte();
   await startFeed();
   await startTgcFeed();
   await startNews();
@@ -1410,7 +1357,6 @@ client.on(Events.InteractionCreate, async (i) => {
       '__Salons & annonces__',
       '**/directe** — ce qui se passe en direct dans le jeu',
       '**/auto-leaderboard on|off** — poster le classement toutes les 10 min (option `reset`)',
-      '**/auto-directe on|off** — un message auto-rafraîchi avec le flux en direct',
       '**/feed on|off** — poster chaque action du jeu, en temps réel',
       '**/news** — éditer le panneau « Quoi de neuf ? » du jeu',
       '**/news-post** `salon:` — (re)poster ce panneau dans un salon',
@@ -1734,14 +1680,6 @@ client.on(Events.InteractionCreate, async (i) => {
       return void i.editReply(ok
         ? `✅ Classement posté dans ${salon}, puis **toutes les 10 min** (prochain dans ~${mins} min). L'ancien message est supprimé à chaque fois.${reset ? ' Remise à zéro du classement après chaque envoi.' : ''}`
         : `⚠️ Enregistré, mais l'envoi de test a échoué. Vérifie que le bot peut **écrire** et **joindre des fichiers** dans ${salon} (voir les logs).`);
-    }
-
-    if (i.commandName === 'auto-directe') {
-      if (sub === 'off') { clearInterval(jobs.directe); jobs.directe = null; await cfgDel('auto_directe'); return void i.reply({ ephemeral: true, content: 'Auto-directe désactivé.' }); }
-      const salon = i.options.getChannel('salon');
-      await cfgSet('auto_directe', { channel_id: salon.id });
-      await startDirecte();
-      return void i.reply({ ephemeral: true, content: `Message "en direct" dans ${salon}, rafraîchi toutes les 5 s.` });
     }
 
     if (i.commandName === 'feed') {
