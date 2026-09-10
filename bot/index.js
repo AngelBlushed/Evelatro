@@ -1802,4 +1802,9 @@ client.on(Events.InteractionCreate, async (i) => {
   }
 });
 
-client.login(DISCORD_TOKEN);
+client.login(DISCORD_TOKEN).catch(e => {
+  // coupure réseau au tout premier login (avant que discord.js ait sa propre reconnexion en place) ->
+  // on quitte plutôt que de rester bloqué en silence ; LANCER-LE-BOT.bat relance automatiquement.
+  console.error('Connexion à Discord impossible :', e.message, '- nouvelle tentative au prochain redémarrage.');
+  process.exit(1);
+});
