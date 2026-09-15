@@ -43,18 +43,9 @@
      node index.js
    =========================================================== */
 import 'dotenv/config';
-import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-
-/* Petit serveur "je suis vivant" : les hébergeurs (Railway, Koyeb, Fly…) tuent
-   le conteneur si rien n'écoute sur le port du health-check. Inoffensif ailleurs. */
-{
-  const port = process.env.PORT || 8000;
-  http.createServer((req, res) => { res.writeHead(200); res.end('EveLatro bot OK'); })
-    .listen(port, () => console.log('health server :' + port));
-}
 import {
   Client, GatewayIntentBits, Partials, EmbedBuilder, AttachmentBuilder, Events, ActivityType,
   SlashCommandBuilder, PermissionFlagsBits,
@@ -1653,7 +1644,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
     if (i.commandName === 'evachisatue') {
       const emb = new EmbedBuilder()
-        .setColor(GREEN)
+        .setColor(PINK)
         .setDescription([
       "# 🌸 EvaChi — l'émulation, sans la corvée",
       "",
