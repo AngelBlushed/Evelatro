@@ -31,6 +31,9 @@
            lien seul (pour l'apercu du site).
      /tag-purg
         -> embed "le tag PURG est dispo" + un 2e message @everyone.
+     /evachisatue
+        -> poste l'embed du logiciel "EvaChi" + un 2e message avec le
+           lien seul (pour l'apercu du site).
 
    La config (salons choisis) est gardee dans la table Supabase
    "bot_config" -> survit aux redemarrages / redeploys Railway.
@@ -913,6 +916,10 @@ const COMMANDS = [
     .setDescription('Annoncer que le tag PURG est dispo (embed + @everyone)')
     .setDefaultMemberPermissions(ADMIN),
 
+  new SlashCommandBuilder().setName('evachisatue')
+    .setDescription('Annoncer le logiciel EvaChi (embed + lien avec aperçu)')
+    .setDefaultMemberPermissions(ADMIN),
+
   new SlashCommandBuilder().setName('help')
     .setDescription('La liste des commandes joueur d\'EveLatro!'),
 
@@ -1370,6 +1377,7 @@ client.on(Events.InteractionCreate, async (i) => {
       '**/evachi** `role:` `salon:` — (re)poster un panneau "EvaChi"',
       '**/emilia-tann** — annoncer le jeu Emiliaaa Tann (embed + lien avec aperçu)',
       '**/tag-purg** — annoncer que le tag PURG est dispo (embed + **@everyone**)',
+      '**/evachisatue** — annoncer le logiciel EvaChi (embed + lien avec aperçu)',
       '',
       '__Salon d\'aide__',
       '**/warn** `membre:` `raison:` — +1 warn ; à 3 warns le membre passe en lecture seule (il peut juste lire)',
@@ -1640,6 +1648,53 @@ client.on(Events.InteractionCreate, async (i) => {
       await i.reply({ embeds: [emb], files: att ? [att] : [], allowedMentions: { parse: [] } });
       // message séparé, SANS embed : Discord n'affiche l'aperçu du site que comme ça
       await i.followUp({ content: 'https://emiliaaa-tann.netlify.app/', allowedMentions: { parse: [] } });
+      return;
+    }
+
+    if (i.commandName === 'evachisatue') {
+      const emb = new EmbedBuilder()
+        .setColor(GREEN)
+        .setDescription([
+      "# 🌸 EvaChi — l'émulation, sans la corvée",
+      "",
+      "**Un exe de 10 Mo. Vous glissez vos jeux dans un dossier. C'est tout.**",
+      "",
+      "EvaChi installe les émulateurs à votre place, range vos BIOS toute seule, et démarre vos jeux directement — sans jamais vous montrer le menu d'un émulateur.",
+      "",
+      "## Ce dont personne d'autre ne s'occupe",
+      "",
+      "**Le rangement automatique des fichiers système.**",
+      "Vous avez un dossier de BIOS en vrac ? Montrez-le à EvaChi :",
+      "",
+      "- elle reconnaît un BIOS à son nom, même écrit en majuscules, même au fond d'un sous-dossier",
+      "- elle reconnaît la mémoire flash de la Xbox **à sa taille** — 1 Mo pile — parce qu'elle n'a pas de nom conventionnel",
+      "- elle ouvre les archives et n'y prend que ce qu'elle sait placer",
+      "- elle répartit tout entre **39 cœurs** et **9 émulateurs autonomes** qui n'ont rien en commun",
+      "- elle réécrit au passage la configuration de xemu et les manettes de Dolphin",
+      "",
+      "**29 fichiers système reconnus.** Ce que personne ne réclame n'est pas déplacé, et on vous le dit.",
+      "",
+      "## Pourquoi celle-là et pas une autre",
+      "",
+      "**RetroArch** installe des cœurs, pas des émulateurs autonomes. Switch, Wii U, PS2, Xbox 360 : débrouillez-vous.",
+      "**LaunchBox / Playnite** lancent les émulateurs, ne les installent pas.",
+      "**Batocera / Retrobat** font tout ça — mais ce sont des systèmes d'exploitation entiers, à installer sur une machine dédiée.",
+      "",
+      "EvaChi, c'est **un exe et un dossier `roms`**. Rien dans Program Files, rien à désinstaller, ça se déplace d'un bloc sur une clé USB.",
+      "",
+      "## 48 consoles, zéro configuration",
+      "",
+      "Un dossier par console, déjà prêt. Le nom du dossier suffit : EvaChi en déduit l'émulateur, même quand cinq d'entre eux acceptent le même format.",
+      "",
+      "## Ce qu'elle ne contient pas",
+      "",
+      "Aucune ROM. Aucun émulateur. Tout est téléchargé à la demande là où les auteurs publient — `buildbot.libretro.com` pour les cœurs, la forge de chaque projet pour le reste. Chacun garde sa licence, et elles sont toutes citées.",
+      "",
+      "-# Logiciel libre, GPL-3.0-or-later · Windows 10/11 64 bits",
+        ].join('\n'));
+      await i.reply({ embeds: [emb], allowedMentions: { parse: [] } });
+      // message séparé, SANS embed : Discord n'affiche l'aperçu du site que comme ça
+      await i.followUp({ content: 'https://evachi-core.netlify.app/', allowedMentions: { parse: [] } });
       return;
     }
 
