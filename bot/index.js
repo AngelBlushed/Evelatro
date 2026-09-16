@@ -1699,7 +1699,7 @@ client.on(Events.InteractionCreate, async (i) => {
 
     if (i.commandName === 'glastenbury') {
       const emb = new EmbedBuilder()
-        .setColor(PINK)
+        .setColor(INK)
         .setDescription([
       "# 🕯️ Glastenbury — Vermont, 12 novembre 1945",
       "",
