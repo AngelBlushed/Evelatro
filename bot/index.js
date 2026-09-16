@@ -34,6 +34,9 @@
      /evachisatue
         -> poste l'embed du logiciel "EvaChi" + un 2e message avec le
            lien seul (pour l'apercu du site).
+     /glastenbury
+        -> poste l'embed du jeu "Glastenbury" + un 2e message avec le
+           lien seul (pour l'apercu du site).
 
    La config (salons choisis) est gardee dans la table Supabase
    "bot_config" -> survit aux redemarrages / redeploys Railway.
@@ -911,6 +914,10 @@ const COMMANDS = [
     .setDescription('Annoncer le logiciel EvaChi (embed + lien avec aperçu)')
     .setDefaultMemberPermissions(ADMIN),
 
+  new SlashCommandBuilder().setName('glastenbury')
+    .setDescription('Annoncer le jeu Glastenbury (embed + lien avec aperçu)')
+    .setDefaultMemberPermissions(ADMIN),
+
   new SlashCommandBuilder().setName('help')
     .setDescription('La liste des commandes joueur d\'EveLatro!'),
 
@@ -1369,6 +1376,7 @@ client.on(Events.InteractionCreate, async (i) => {
       '**/emilia-tann** — annoncer le jeu Emiliaaa Tann (embed + lien avec aperçu)',
       '**/tag-purg** — annoncer que le tag PURG est dispo (embed + **@everyone**)',
       '**/evachisatue** — annoncer le logiciel EvaChi (embed + lien avec aperçu)',
+      '**/glastenbury** — annoncer le jeu Glastenbury (embed + lien avec aperçu)',
       '',
       '__Salon d\'aide__',
       '**/warn** `membre:` `raison:` — +1 warn ; à 3 warns le membre passe en lecture seule (il peut juste lire)',
@@ -1686,6 +1694,32 @@ client.on(Events.InteractionCreate, async (i) => {
       await i.reply({ embeds: [emb], allowedMentions: { parse: [] } });
       // message séparé, SANS embed : Discord n'affiche l'aperçu du site que comme ça
       await i.followUp({ content: 'https://evachi-core.netlify.app/', allowedMentions: { parse: [] } });
+      return;
+    }
+
+    if (i.commandName === 'glastenbury') {
+      const emb = new EmbedBuilder()
+        .setColor(PINK)
+        .setDescription([
+      "# 🕯️ Glastenbury — Vermont, 12 novembre 1945",
+      "",
+      "**Vous conduisez l'autobus de nuit. Il y a un passager à l'arrière, un billet à poinçonner, et une lampe à manivelle qui démarre à plat.**",
+      "",
+      "Horreur narrative à la première personne, une heure, rendue en 320×180 et ramenée à trente-deux couleurs. Ce que l'œil ne résout pas fait plus peur que ce qu'il résout.",
+      "",
+      "## Celui qui cherche",
+      "",
+      "Il ne sait pas où vous êtes. Il sait ce qu'il a vu et ce qu'il a entendu — tout vient de cet écart.",
+      "",
+      "## Ce qui est vrai",
+      "",
+      "Cinq personnes ont disparu autour du mont Glastenbury, dans le Vermont, entre 1945 et 1950. Les rapports de la police d'État existent ; les corps, pour la plupart, non. Le jeu part de là et s'arrête où ils s'arrêtent — la ferme, ce qui la garde et ce qu'on y trouve sont une fiction.",
+      "",
+      "-# Windows 64 bits · 99 Mo · obscurité prolongée, sons soudains, un corps · options de confort à tout moment par Échap",
+        ].join('\n'));
+      await i.reply({ embeds: [emb], allowedMentions: { parse: [] } });
+      // message séparé, SANS embed : Discord n'affiche l'aperçu du site que comme ça
+      await i.followUp({ content: 'https://glastenbury.netlify.app/', allowedMentions: { parse: [] } });
       return;
     }
 
